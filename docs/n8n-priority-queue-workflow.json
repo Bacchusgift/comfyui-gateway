@@ -1,0 +1,465 @@
+{
+  "name": "ComfyUI Gateway 优先队列生图流程",
+  "nodes": [
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "workflow",
+              "name": "workflow",
+              "value": "={{ $json.workflow }}",
+              "type": "object"
+            },
+            {
+              "id": "priority",
+              "name": "priority",
+              "value": "={{ $json.priority || 5 }}",
+              "type": "number"
+            },
+            {
+              "id": "gatewayUrl",
+              "name": "gatewayUrl",
+              "value": "http://localhost:8000/api",
+              "type": "string"
+            }
+          ]
+        },
+        "renameOutput": false,
+        "outputSameInputFormat": false
+      },
+      "id": "init-config",
+      "name": "初始化配置",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.gatewayUrl }}/prompt",
+        "authentication": "none",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"prompt\": {{ $json.workflow }},\n  \"client_id\": \"n8n-priority-\" + $now.toFormat('yyyyMMddHHmmss'),\n  \"priority\": {{ $json.priority }}\n}",
+        "options": {}
+      },
+      "id": "submit-prompt",
+      "name": "提交到优先队列",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "gateway_job_id",
+              "name": "gateway_job_id",
+              "value": "={{ $json.gateway_job_id }}",
+              "type": "string"
+            },
+            {
+              "id": "gatewayUrl",
+              "name": "gatewayUrl",
+              "value": "={{ $('初始化配置').item.json.gatewayUrl }}",
+              "type": "string"
+            }
+          ]
+        },
+        "renameOutput": false,
+        "outputSameInputFormat": false
+      },
+      "id": "save-job-id",
+      "name": "保存gateway_job_id",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "amount": 3,
+        "unit": "seconds"
+      },
+      "id": "wait-gateway",
+      "name": "等待3秒",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('保存gateway_job_id').item.json.gatewayUrl }}/task/gateway/{{ $('保存gateway_job_id').item.json.gateway_job_id }}",
+        "authentication": "none",
+        "options": {}
+      },
+      "id": "check-gateway-status",
+      "name": "检查网关队列状态",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.prompt_id }}",
+              "operation": "isEmpty",
+              "value2": ""
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "has-prompt-id",
+      "name": "已获取prompt_id?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "prompt_id",
+              "name": "prompt_id",
+              "value": "={{ $json.prompt_id }}",
+              "type": "string"
+            },
+            {
+              "id": "gatewayUrl",
+              "name": "gatewayUrl",
+              "value": "={{ $('保存gateway_job_id').item.json.gatewayUrl }}",
+              "type": "string"
+            },
+            {
+              "id": "gateway_job_id",
+              "name": "gateway_job_id",
+              "value": "={{ $('保存gateway_job_id').item.json.gateway_job_id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "renameOutput": false,
+        "outputSameInputFormat": false
+      },
+      "id": "save-prompt-id",
+      "name": "保存prompt_id",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [1560, 200]
+    },
+    {
+      "parameters": {
+        "amount": 5,
+        "unit": "seconds"
+      },
+      "id": "wait-task",
+      "name": "等待5秒",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [1780, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('保存prompt_id').item.json.gatewayUrl }}/task/{{ $('保存prompt_id').item.json.prompt_id }}/status",
+        "authentication": "none",
+        "options": {}
+      },
+      "id": "check-task-status",
+      "name": "检查任务执行状态",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2000, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.status }}",
+              "operation": "equals",
+              "value2": "done"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "task-done",
+      "name": "任务完成?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2220, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('保存prompt_id').item.json.gatewayUrl }}/history/{{ $('保存prompt_id').item.json.prompt_id }}",
+        "authentication": "none",
+        "options": {}
+      },
+      "id": "get-history",
+      "name": "获取任务结果",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2440, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// 提取图片 URL\nconst items = $input.all();\nconst results = [];\nconst data = items[0].json;\nconst promptId = Object.keys(data)[0];\nconst taskData = data[promptId];\n\nif (!taskData || !taskData.outputs) {\n  return [{ json: { error: 'No outputs found', prompt_id: promptId } }];\n}\n\nfor (const [nodeId, output] of Object.entries(taskData.outputs)) {\n  if (output.images && Array.isArray(output.images)) {\n    for (const img of output.images) {\n      results.push({\n        json: {\n          filename: img.filename,\n          subfolder: img.subfolder || '',\n          type: img.type || 'output',\n          url: img.url,\n          prompt_id: promptId,\n          node_id: nodeId\n        }\n      });\n    }\n  }\n  if (output.videos && Array.isArray(output.videos)) {\n    for (const video of output.videos) {\n      results.push({\n        json: {\n          filename: video.filename,\n          subfolder: video.subfolder || '',\n          type: video.type || 'output',\n          url: video.url,\n          prompt_id: promptId,\n          node_id: nodeId,\n          format: video.format || 'video'\n        }\n      });\n    }\n  }\n}\n\nif (results.length === 0) {\n  results.push({ json: { raw: taskData, prompt_id: promptId } });\n}\n\nreturn results;"
+      },
+      "id": "extract-urls",
+      "name": "提取输出URL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2660, 200]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "summary",
+              "name": "summary",
+              "value": "=优先队列任务完成!\\nGateway Job ID: {{ $('保存prompt_id').item.json.gateway_job_id }}\\nPrompt ID: {{ $('保存prompt_id').item.json.prompt_id }}",
+              "type": "string"
+            },
+            {
+              "id": "imageCount",
+              "name": "imageCount",
+              "value": "={{ $json.length }}",
+              "type": "number"
+            }
+          ]
+        },
+        "renameOutput": true,
+        "outputSameInputFormat": false
+      },
+      "id": "success-summary",
+      "name": "成功摘要",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [2880, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.status }}",
+              "operation": "equals",
+              "value2": "failed"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "task-failed",
+      "name": "任务失败?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2440, 400]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "error",
+              "name": "error",
+              "value": "=任务失败!\\nGateway Job ID: {{ $('保存gateway_job_id').item.json.gateway_job_id }}\\nPrompt ID: {{ $('保存prompt_id').item.json.prompt_id }}\\n状态: {{ $json.status }}\\n消息: {{ $json.message || '无' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "renameOutput": true,
+        "outputSameInputFormat": false
+      },
+      "id": "error-summary",
+      "name": "错误摘要",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [2660, 500]
+    }
+  ],
+  "connections": {
+    "初始化配置": {
+      "main": [
+        [
+          {
+            "node": "提交到优先队列",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "提交到优先队列": {
+      "main": [
+        [
+          {
+            "node": "保存gateway_job_id",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "保存gateway_job_id": {
+      "main": [
+        [
+          {
+            "node": "等待3秒",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "等待3秒": {
+      "main": [
+        [
+          {
+            "node": "检查网关队列状态",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "检查网关队列状态": {
+      "main": [
+        [
+          {
+            "node": "已获取prompt_id?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "已获取prompt_id?": {
+      "main": [
+        [
+          {
+            "node": "保存prompt_id",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "等待3秒",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "保存prompt_id": {
+      "main": [
+        [
+          {
+            "node": "等待5秒",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "等待5秒": {
+      "main": [
+        [
+          {
+            "node": "检查任务执行状态",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "检查任务执行状态": {
+      "main": [
+        [
+          {
+            "node": "任务完成?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "任务完成?": {
+      "main": [
+        [
+          {
+            "node": "获取任务结果",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "任务失败?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "获取任务结果": {
+      "main": [
+        [
+          {
+            "node": "提取输出URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "提取输出URL": {
+      "main": [
+        [
+          {
+            "node": "成功摘要",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "任务失败?": {
+      "main": [
+        [
+          {
+            "node": "错误摘要",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "等待5秒",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2025-01-15T00:00:00.000Z",
+  "versionId": "1.0.0"
+}

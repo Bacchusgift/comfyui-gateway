@@ -139,6 +139,8 @@ async def task_status(prompt_id: str):
     """
     GET /api/task/{prompt_id}/status
     返回: prompt_id, worker_id, status (queued|running|done|failed), progress, message
+
+    进度优化：当任务执行中时，会调用 Worker 的 /prompt 接口获取实时进度。
     """
     worker_id = store.get_task_worker(prompt_id)
     if not worker_id:
@@ -149,7 +151,8 @@ async def task_status(prompt_id: str):
     worker = wm.get_worker(worker_id)
     if not worker:
         raise HTTPException(status_code=503, detail="Worker no longer registered")
-    # 查 history：有结果则为 done
+
+    # 先查 history：有结果则为 done
     hist, hist_status = await get_history(worker.url, prompt_id, auth=worker.auth())
     if hist_status == 200 and isinstance(hist, dict) and prompt_id in hist:
         return {
@@ -161,7 +164,8 @@ async def task_status(prompt_id: str):
             "message": "Completed",
             "history": hist,
         }
-    # 查 queue：在 running 则为 running，在 pending 则为 queued
+
+    # 查 queue：在 running 则尝试获取进度
     data = await fetch_queue(worker.url, auth=worker.auth())
     if not data:
         return {
@@ -177,13 +181,16 @@ async def task_status(prompt_id: str):
     for item in running:
         pid = item[0] if isinstance(item, (list, tuple)) and len(item) > 0 else None
         if pid == prompt_id:
+            # 任务正在执行中，尝试获取实时进度
+            from app.client import get_progress
+            progress, _ = await get_progress(worker.url, prompt_id, auth=worker.auth())
             return {
                 "prompt_id": prompt_id,
                 "worker_id": worker_id,
                 "worker_name": worker.name,
                 "status": "running",
-                "progress": None,
-                "message": "Executing",
+                "progress": progress,
+                "message": f"Executing {f'({progress:.0f}%)' if progress is not None else ''}",
             }
     for item in pending:
         pid = item[0] if isinstance(item, (list, tuple)) and len(item) > 0 else None
@@ -193,7 +200,7 @@ async def task_status(prompt_id: str):
                 "worker_id": worker_id,
                 "worker_name": worker.name,
                 "status": "queued",
-                "progress": None,
+                "progress": 0,
                 "message": "Waiting in queue",
             }
     # 不在 queue 且 history 没有 -> 可能失败或已清理

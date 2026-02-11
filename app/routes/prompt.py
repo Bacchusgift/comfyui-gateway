@@ -40,4 +40,6 @@ async def submit_prompt(body: PromptBody):
         raise HTTPException(status_code=status, detail=err or "Worker request failed")
     if isinstance(data, dict) and "prompt_id" in data:
         store.set_task_worker(data["prompt_id"], worker.worker_id)
+        # 立即更新 Worker 负载：running + 1
+        wm.update_worker_load(worker.worker_id, worker.queue_running + 1, worker.queue_pending, healthy=True)
     return data

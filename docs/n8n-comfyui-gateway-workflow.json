@@ -1,0 +1,382 @@
+{
+  "name": "ComfyUI Gateway 生图流程",
+  "nodes": [
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "workflow",
+              "name": "workflow",
+              "value": "={{ $json.workflow }}",
+              "type": "object"
+            },
+            {
+              "id": "gatewayUrl",
+              "name": "gatewayUrl",
+              "value": "http://localhost:8000/api",
+              "type": "string"
+            }
+          ]
+        },
+        "renameOutput": false,
+        "outputSameInputFormat": false
+      },
+      "id": "init-config",
+      "name": "初始化配置",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.gatewayUrl }}/prompt",
+        "authentication": "none",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"prompt\": {{ $json.workflow }},\n  \"client_id\": \"n8n-\" + $now.toFormat('yyyyMMddHHmmss')\n}",
+        "options": {}
+      },
+      "id": "submit-prompt",
+      "name": "提交生图任务",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "prompt_id",
+              "name": "prompt_id",
+              "value": "={{ $json.prompt_id }}",
+              "type": "string"
+            },
+            {
+              "id": "number",
+              "name": "number",
+              "value": "={{ $json.number }}",
+              "type": "number"
+            },
+            {
+              "id": "gatewayUrl",
+              "name": "gatewayUrl",
+              "value": "={{ $('初始化配置').item.json.gatewayUrl }}",
+              "type": "string"
+            }
+          ]
+        },
+        "renameOutput": false,
+        "outputSameInputFormat": false
+      },
+      "id": "save-prompt-id",
+      "name": "保存prompt_id",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "amount": 5,
+        "unit": "seconds"
+      },
+      "id": "wait-poll",
+      "name": "等待5秒",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('保存prompt_id').item.json.gatewayUrl }}/task/{{ $('保存prompt_id').item.json.prompt_id }}/status",
+        "authentication": "none",
+        "options": {}
+      },
+      "id": "check-status",
+      "name": "检查任务状态",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.status }}",
+              "operation": "equals",
+              "value2": "done"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "check-done",
+      "name": "是否完成?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('保存prompt_id').item.json.gatewayUrl }}/history/{{ $('保存prompt_id').item.json.prompt_id }}",
+        "authentication": "none",
+        "options": {}
+      },
+      "id": "get-history",
+      "name": "获取任务结果",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1560, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// 提取图片 URL\nconst items = $input.all();\nconst results = [];\nconst data = items[0].json;\nconst promptId = Object.keys(data)[0];\nconst taskData = data[promptId];\n\nif (!taskData || !taskData.outputs) {\n  return [{ json: { error: 'No outputs found', prompt_id: promptId } }];\n}\n\nfor (const [nodeId, output] of Object.entries(taskData.outputs)) {\n  if (output.images && Array.isArray(output.images)) {\n    for (const img of output.images) {\n      results.push({\n        json: {\n          filename: img.filename,\n          subfolder: img.subfolder || '',\n          type: img.type || 'output',\n          url: img.url,\n          prompt_id: promptId,\n          node_id: nodeId\n        }\n      });\n    }\n  }\n  if (output.videos && Array.isArray(output.videos)) {\n    for (const video of output.videos) {\n      results.push({\n        json: {\n          filename: video.filename,\n          subfolder: video.subfolder || '',\n          type: video.type || 'output',\n          url: video.url,\n          prompt_id: promptId,\n          node_id: nodeId,\n          format: video.format || 'video'\n        }\n      });\n    }\n  }\n}\n\nif (results.length === 0) {\n  results.push({ json: { raw: taskData, prompt_id: promptId } });\n}\n\nreturn results;"
+      },
+      "id": "extract-urls",
+      "name": "提取图片URL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1780, 200]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "summary",
+              "name": "summary",
+              "value": "=任务完成! Prompt ID: {{ $('保存prompt_id').item.json.prompt_id }}",
+              "type": "string"
+            },
+            {
+              "id": "imageCount",
+              "name": "imageCount",
+              "value": "={{ $json.length }}",
+              "type": "number"
+            }
+          ]
+        },
+        "renameOutput": true,
+        "outputSameInputFormat": false
+      },
+      "id": "success-summary",
+      "name": "成功摘要",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [2000, 200]
+    },
+    {
+      "parameters": {
+        "amount": 3,
+        "unit": "seconds"
+      },
+      "id": "wait-retry",
+      "name": "等待3秒后重试",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [1560, 400]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "error",
+              "name": "error",
+              "value": "=任务失败!\\n状态: {{ $json.status }}\\n消息: {{ $json.message || '无' }}\\nPrompt ID: {{ $('保存prompt_id').item.json.prompt_id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "renameOutput": true,
+        "outputSameInputFormat": false
+      },
+      "id": "failed-summary",
+      "name": "失败摘要",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [1780, 500]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.status }}",
+              "operation": "equals",
+              "value2": "failed"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "check-failed",
+      "name": "是否失败?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1560, 400]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "options": {}
+      },
+      "id": "download-image",
+      "name": "下载图片[可选]",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2220, 200]
+    }
+  ],
+  "connections": {
+    "初始化配置": {
+      "main": [
+        [
+          {
+            "node": "提交生图任务",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "提交生图任务": {
+      "main": [
+        [
+          {
+            "node": "保存prompt_id",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "保存prompt_id": {
+      "main": [
+        [
+          {
+            "node": "等待5秒",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "等待5秒": {
+      "main": [
+        [
+          {
+            "node": "检查任务状态",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "检查任务状态": {
+      "main": [
+        [
+          {
+            "node": "是否完成?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "是否完成?": {
+      "main": [
+        [
+          {
+            "node": "获取任务结果",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "是否失败?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "获取任务结果": {
+      "main": [
+        [
+          {
+            "node": "提取图片URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "提取图片URL": {
+      "main": [
+        [
+          {
+            "node": "成功摘要",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "成功摘要": {
+      "main": [
+        [
+          {
+            "node": "下载图片[可选]",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "是否失败?": {
+      "main": [
+        [
+          {
+            "node": "失败摘要",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "等待3秒后重试",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "等待3秒后重试": {
+      "main": [
+        [
+          {
+            "node": "等待5秒",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2025-01-15T00:00:00.000Z",
+  "versionId": "1.0.0"
+}

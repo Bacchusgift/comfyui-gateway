@@ -1,5 +1,5 @@
 """
-请求 ComfyUI Worker 的 HTTP 封装：queue, prompt, history, health。
+请求 ComfyUI Worker 的 HTTP 封装：queue, prompt, history, health, progress。
 支持 Basic 认证：auth=(username, password) 用于 nginx 等反向代理。
 """
 import httpx
@@ -95,5 +95,58 @@ async def get_prompt(base_url: str, auth: Optional[tuple[str, str]] = None) -> t
         async with _client(auth) as c:
             r = await c.get(f"{base_url.rstrip('/')}/prompt")
             return r.json() if r.content else None, r.status_code
+    except Exception:
+        return None, 503
+
+async def get_progress(base_url: str, prompt_id: str, auth: Optional[tuple[str, str]] = None) -> tuple[Optional[float], int]:
+    """
+    从 /prompt 接口获取任务执行进度（百分比）。
+
+    返回 (progress_percent, status_code)。
+    进度值：0-100，None 表示无法获取。
+    """
+    try:
+        async with _client(auth) as c:
+            r = await c.get(f"{base_url.rstrip('/')}/prompt")
+            if r.status_code != 200 or not r.content:
+                return None, r.status_code
+
+            data = r.json()
+            if not isinstance(data, dict):
+                return None, r.status_code
+
+            # 尝试从响应中提取进度信息
+            # ComfyUI 的进度信息在 exec_info 或 status 字段中
+            exec_info = data.get("exec_info", {})
+            status_info = data.get("status", {})
+
+            # 方式1：从 exec_info.queue_remaining 计算（队列剩余0表示执行完成）
+            if isinstance(exec_info, dict):
+                queue_remaining = exec_info.get("queue_remaining")
+                if queue_remaining is not None and queue_remaining == 0:
+                    return 100.0, r.status_code
+
+            # 方式2：从 status.status_str 判断
+            if isinstance(status_info, dict):
+                status_str = status_info.get("status_str", "")
+                if status_str == "success":
+                    return 100.0, r.status_code
+
+            # 方式3：从节点输出中查找 progress 或 value_percent 字段（某些自定义节点会输出）
+            if isinstance(data.get("prompt"), dict):
+                prompt_data = data.get("prompt", {})
+                for node_id, node_data in prompt_data.items():
+                    if isinstance(node_data, dict):
+                        # 检查是否有 progress 字段（直接在节点数据上）
+                        if "progress" in node_data and isinstance(node_data["progress"], (int, float)):
+                            return float(node_data["progress"]), r.status_code
+                        # 检查是否有 value 字段（某些节点用 value 包装）
+                        if "value" in node_data and isinstance(node_data["value"], dict):
+                            value = node_data["value"]
+                            if "progress" in value and isinstance(value["progress"], (int, float)):
+                                return float(value["progress"]), r.status_code
+
+            # 无法获取进度时返回 None
+            return None, r.status_code
     except Exception:
         return None, 503
