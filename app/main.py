@@ -9,6 +9,7 @@ from fastapi.responses import FileResponse
 from app.routes import workers, prompt, history, queue, view, settings
 from app.dispatcher import run_dispatcher
 from app.health import run_health_loop
+from app.progress_monitor import progress_monitor_loop
 from app.task_history import ensure_table
 
 @asynccontextmanager
@@ -17,10 +18,12 @@ async def lifespan(app: FastAPI):
     ensure_table()
     dispatch_task = asyncio.create_task(run_dispatcher(interval_seconds=1.0))
     health_task = asyncio.create_task(run_health_loop(interval_seconds=30.0))
+    progress_task = asyncio.create_task(progress_monitor_loop(interval_seconds=2.0))
     yield
     dispatch_task.cancel()
     health_task.cancel()
-    for t in (dispatch_task, health_task):
+    progress_task.cancel()
+    for t in (dispatch_task, health_task, progress_task):
         try:
             await t
         except asyncio.CancelledError:

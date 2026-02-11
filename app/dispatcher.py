@@ -68,7 +68,11 @@ async def _dispatch_one() -> bool:
     prompt_id = data["prompt_id"]
     update_submitted(job.gateway_job_id, prompt_id=prompt_id, worker_id=worker.worker_id)
 
-    logger.info(f"任务 {job.gateway_job_id} (prompt_id: {prompt_id}) 已提交到 Worker {worker.worker_id}")
+    # 启动进度监听
+    from app.progress_monitor import start_monitoring
+    start_monitoring(job.gateway_job_id, prompt_id)
+
+    logger.info(f"任务 {job.gateway_job_id} (prompt_id: {prompt_id}) 已提交到 Worker {worker.worker_id}，开始进度监听")
     return True
 
 
