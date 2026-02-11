@@ -5,7 +5,7 @@
 from typing import Optional
 
 from app import workers as wm
-from app.client import fetch_queue, parse_queue_counts
+from app.client import fetch_queue, parse_queue_counts, health_check
 from app.workers import WorkerInfo
 
 async def refresh_worker_load(worker_id: str) -> None:
@@ -13,8 +13,13 @@ async def refresh_worker_load(worker_id: str) -> None:
     if not info:
         return
     data = await fetch_queue(info.url, auth=info.auth())
-    running, pending = parse_queue_counts(data)
-    wm.update_worker_load(worker_id, running, pending, healthy=data is not None)
+    if data is not None:
+        running, pending = parse_queue_counts(data)
+        wm.update_worker_load(worker_id, running, pending, healthy=True)
+    else:
+        # fetch_queue 失败时做一次 health_check 确认是否真不可达
+        healthy, _ = await health_check(info.url, auth=info.auth())
+        wm.update_worker_load(worker_id, info.queue_running, info.queue_pending, healthy=healthy)
 
 async def refresh_all_loads() -> None:
     for w in wm.list_workers():

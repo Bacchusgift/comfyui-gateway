@@ -7,17 +7,21 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.routes import workers, prompt, history, queue, view, settings
 from app.dispatcher import run_dispatcher
+from app.health import run_health_loop
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    task = asyncio.create_task(run_dispatcher(interval_seconds=1.0))
+    dispatch_task = asyncio.create_task(run_dispatcher(interval_seconds=1.0))
+    health_task = asyncio.create_task(run_health_loop(interval_seconds=30.0))
     yield
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
+    dispatch_task.cancel()
+    health_task.cancel()
+    for t in (dispatch_task, health_task):
+        try:
+            await t
+        except asyncio.CancelledError:
+            pass
 
 
 app = FastAPI(

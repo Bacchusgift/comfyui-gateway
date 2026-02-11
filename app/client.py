@@ -1,5 +1,5 @@
 """
-请求 ComfyUI Worker 的 HTTP 封装：queue, prompt, history。
+请求 ComfyUI Worker 的 HTTP 封装：queue, prompt, history, health。
 支持 Basic 认证：auth=(username, password) 用于 nginx 等反向代理。
 """
 import httpx
@@ -7,11 +7,45 @@ from typing import Optional
 
 from app.config import WORKER_REQUEST_TIMEOUT
 
-def _client(auth: Optional[tuple[str, str]] = None) -> httpx.AsyncClient:
-    kwargs = {"timeout": WORKER_REQUEST_TIMEOUT}
+# 健康探测专用短超时（秒）
+_HEALTH_TIMEOUT = 5
+
+def _client(auth: Optional[tuple[str, str]] = None, timeout: float = WORKER_REQUEST_TIMEOUT) -> httpx.AsyncClient:
+    kwargs: dict = {"timeout": timeout}
     if auth:
         kwargs["auth"] = httpx.BasicAuth(auth[0], auth[1])
     return httpx.AsyncClient(**kwargs)
+
+
+async def health_check(base_url: str, auth: Optional[tuple[str, str]] = None) -> tuple[bool, str]:
+    """
+    探测 ComfyUI Worker 是否可达。
+    依次尝试 GET /system_stats（ComfyUI 内置），回退 GET /queue。
+    返回 (healthy: bool, detail: str)。
+    """
+    url = base_url.rstrip("/")
+    try:
+        async with _client(auth, timeout=_HEALTH_TIMEOUT) as c:
+            r = await c.get(f"{url}/system_stats")
+            if r.status_code == 200:
+                return True, "ok"
+    except Exception:
+        pass
+    # 回退到 /queue
+    try:
+        async with _client(auth, timeout=_HEALTH_TIMEOUT) as c:
+            r = await c.get(f"{url}/queue")
+            if r.status_code == 200:
+                return True, "ok (via /queue)"
+    except httpx.ConnectError:
+        return False, "Connection refused"
+    except httpx.ConnectTimeout:
+        return False, "Connection timeout"
+    except httpx.HTTPStatusError as e:
+        return False, f"HTTP {e.response.status_code}"
+    except Exception as e:
+        return False, str(e)
+    return False, "Unreachable"
 
 async def fetch_queue(base_url: str, auth: Optional[tuple[str, str]] = None) -> Optional[dict]:
     """GET /queue -> { queue_running: [...], queue_pending: [...] }"""
