@@ -17,8 +17,6 @@ export default function Tasks() {
   const [searchParams] = useSearchParams();
   const promptIdParam = searchParams.get("prompt_id") || "";
   const gatewayJobIdParam = searchParams.get("gateway_job_id") || "";
-  const [promptId, setPromptId] = useState(promptIdParam);
-  const [gatewayJobId, setGatewayJobId] = useState(gatewayJobIdParam);
   const [queryInput, setQueryInput] = useState(gatewayJobIdParam || promptIdParam);
   const [result, setResult] = useState<TaskStatus | null>(null);
   const [gatewayResult, setGatewayResult] = useState<GatewayStatus | null>(null);
@@ -40,8 +38,6 @@ export default function Tasks() {
   };
 
   useEffect(() => {
-    setPromptId(promptIdParam);
-    setGatewayJobId(gatewayJobIdParam);
     setQueryInput(gatewayJobIdParam || promptIdParam);
     setResult(null);
     setGatewayResult(null);
