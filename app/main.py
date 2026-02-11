@@ -1,9 +1,10 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
 import asyncio
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 
 from app.routes import workers, prompt, history, queue, view, settings
 from app.dispatcher import run_dispatcher
@@ -45,7 +46,19 @@ app.include_router(queue.router, prefix="/api")
 app.include_router(view.router, prefix="/api")
 app.include_router(settings.router, prefix="/api")
 
-# 前端静态：若存在 frontend/dist 则挂载到根，SPA 由 index.html 接管
+# 前端静态文件目录
 _frontend = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 if _frontend.exists():
-    app.mount("/", StaticFiles(directory=str(_frontend), html=True), name="frontend")
+    # 挂载静态资源文件（js, css, images 等）
+    app.mount("/assets", StaticFiles(directory=str(_frontend / "assets")), name="frontend-assets")
+
+    # SPA fallback: 对于所有非 API 请求，返回 index.html
+    @app.get("/{full_path:path}")
+    async def serve_spa(request: Request, full_path: str):
+        """处理前端路由，将所有非 API 请求返回 index.html"""
+        file_path = _frontend / full_path
+        # 如果请求的是具体文件且存在，直接返回
+        if file_path.is_file():
+            return FileResponse(file_path)
+        # 否则返回 index.html，让前端路由处理
+        return FileResponse(_frontend / "index.html")
