@@ -1,6 +1,7 @@
 """
 网关侧优先级队列：用于插队。数值越大越优先，同优先级先到先得。
 与业务解耦：网关只认 priority 数值，由调用方决定（如 VIP=10，普通=0）。
+Redis 不可用时自动降级到内存。
 """
 import time
 import uuid
@@ -51,29 +52,33 @@ def _redis():
     if not REDIS_URL:
         return None
     import redis
-    return redis.from_url(REDIS_URL, decode_responses=True)
+    return redis.from_url(REDIS_URL, decode_responses=True, socket_connect_timeout=3, socket_timeout=3)
 
 
 def _load_pending() -> list:
-    r = _redis()
-    if not r:
-        return list(_memory_list)
-    data = r.get(_PENDING_KEY)
-    if not data:
-        return []
     try:
+        r = _redis()
+        if not r:
+            return list(_memory_list)
+        data = r.get(_PENDING_KEY)
+        if not data:
+            return []
         return json.loads(data)
     except Exception:
-        return []
+        return list(_memory_list)
 
 
 def _save_pending(items: list) -> None:
-    r = _redis()
-    if not r:
+    try:
+        r = _redis()
+        if not r:
+            _memory_list.clear()
+            _memory_list.extend(items)
+            return
+        r.set(_PENDING_KEY, json.dumps(items))
+    except Exception:
         _memory_list.clear()
         _memory_list.extend(items)
-        return
-    r.set(_PENDING_KEY, json.dumps(items))
 
 
 def _mysql_add_job(job: QueuedJob) -> None:

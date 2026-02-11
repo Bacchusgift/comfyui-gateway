@@ -51,7 +51,7 @@ def _redis():
     if not REDIS_URL:
         return None
     import redis
-    return redis.from_url(REDIS_URL, decode_responses=True)
+    return redis.from_url(REDIS_URL, decode_responses=True, socket_connect_timeout=3, socket_timeout=3)
 
 def _load_workers_from_mysql() -> None:
     if not use_mysql():
@@ -77,7 +77,10 @@ def _load_workers_from_redis() -> None:
     r = _redis()
     if not r:
         return
-    data = r.get(_WORKERS_KEY)
+    try:
+        data = r.get(_WORKERS_KEY)
+    except Exception:
+        return
     if not data:
         return
     import json
@@ -108,22 +111,30 @@ def _persist_worker(w: WorkerInfo) -> None:
             (w.worker_id, w.url, w.name, w.weight, 1 if w.enabled else 0, w.auth_username, w.auth_password,
              w.url, w.name, w.weight, 1 if w.enabled else 0, w.auth_username, w.auth_password),
         )
-    if _redis():
-        import json
-        arr = [{"worker_id": x.worker_id, "url": x.url, "name": x.name, "weight": x.weight, "enabled": x.enabled,
-                "auth_username": x.auth_username, "auth_password": x.auth_password} for x in _workers.values()]
-        _redis().set(_WORKERS_KEY, json.dumps(arr))
+    try:
+        r = _redis()
+        if r:
+            import json
+            arr = [{"worker_id": x.worker_id, "url": x.url, "name": x.name, "weight": x.weight, "enabled": x.enabled,
+                    "auth_username": x.auth_username, "auth_password": x.auth_password} for x in _workers.values()]
+            r.set(_WORKERS_KEY, json.dumps(arr))
+    except Exception:
+        pass  # Redis 不可用时降级为仅内存
 
 
 def _delete_worker_persist(worker_id: str) -> None:
     if use_mysql():
         from app.db import execute
         execute("DELETE FROM workers WHERE worker_id = %s", (worker_id,))
-    if _redis():
-        import json
-        arr = [{"worker_id": x.worker_id, "url": x.url, "name": x.name, "weight": x.weight, "enabled": x.enabled,
-                "auth_username": x.auth_username, "auth_password": x.auth_password} for x in _workers.values()]
-        _redis().set(_WORKERS_KEY, json.dumps(arr))
+    try:
+        r = _redis()
+        if r:
+            import json
+            arr = [{"worker_id": x.worker_id, "url": x.url, "name": x.name, "weight": x.weight, "enabled": x.enabled,
+                    "auth_username": x.auth_username, "auth_password": x.auth_password} for x in _workers.values()]
+            r.set(_WORKERS_KEY, json.dumps(arr))
+    except Exception:
+        pass
 
 
 def list_workers() -> list[WorkerInfo]:

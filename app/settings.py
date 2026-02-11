@@ -2,6 +2,7 @@
 网关全局设置（如全局 Worker 认证）。
 优先使用页面上保存的值，其次使用 .env 中的 WORKER_AUTH_*。
 持久化：MYSQL_DATABASE 时用 MySQL settings 表，否则 Redis 或内存。
+Redis 不可用时自动降级到内存，不会崩溃。
 """
 from typing import Optional
 
@@ -15,7 +16,7 @@ def _redis():
     if not REDIS_URL:
         return None
     import redis
-    return redis.from_url(REDIS_URL, decode_responses=True)
+    return redis.from_url(REDIS_URL, decode_responses=True, socket_connect_timeout=3, socket_timeout=3)
 
 
 def _mysql_get(k: str) -> Optional[str]:
@@ -34,24 +35,27 @@ def _mysql_set(k: str, v: Optional[str]) -> None:
 
 
 def _load_from_redis() -> None:
-    r = _redis()
-    if not r:
-        return
-    import json
-    data = r.get(_SETTINGS_KEY)
-    if data:
-        try:
+    try:
+        r = _redis()
+        if not r:
+            return
+        import json
+        data = r.get(_SETTINGS_KEY)
+        if data:
             _runtime.update(json.loads(data))
-        except Exception:
-            pass
+    except Exception:
+        pass
 
 
 def _save_to_redis() -> None:
-    r = _redis()
-    if not r:
-        return
-    import json
-    r.set(_SETTINGS_KEY, json.dumps({k: v for k, v in _runtime.items() if v is not None}))
+    try:
+        r = _redis()
+        if not r:
+            return
+        import json
+        r.set(_SETTINGS_KEY, json.dumps({k: v for k, v in _runtime.items() if v is not None}))
+    except Exception:
+        pass
 
 
 def get_global_worker_auth() -> Optional[tuple[str, str]]:
@@ -64,7 +68,7 @@ def get_global_worker_auth() -> Optional[tuple[str, str]]:
         if WORKER_AUTH_USERNAME and WORKER_AUTH_PASSWORD:
             return (WORKER_AUTH_USERNAME, WORKER_AUTH_PASSWORD)
         return None
-    if not _runtime and _redis():
+    if not _runtime:
         _load_from_redis()
     u = _runtime.get("worker_auth_username")
     p = _runtime.get("worker_auth_password")
@@ -83,7 +87,7 @@ def set_global_worker_auth(username: Optional[str], password: Optional[str]) -> 
         if password is not None:
             _mysql_set("worker_auth_password", password or None)
         return
-    if not _runtime and _redis():
+    if not _runtime:
         _load_from_redis()
     if username is not None:
         _runtime["worker_auth_username"] = username or None
@@ -99,7 +103,7 @@ def get_settings_for_api() -> dict:
         p = _mysql_get("worker_auth_password")
         has_password = bool(p or WORKER_AUTH_PASSWORD)
         return {"worker_auth_username": u, "worker_auth_has_password": has_password}
-    if not _runtime and _redis():
+    if not _runtime:
         _load_from_redis()
     u = _runtime.get("worker_auth_username") or WORKER_AUTH_USERNAME
     if "worker_auth_password" in _runtime:
