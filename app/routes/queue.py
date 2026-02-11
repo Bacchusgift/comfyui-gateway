@@ -155,6 +155,18 @@ async def task_status(prompt_id: str):
     # 先查 history：有结果则为 done
     hist, hist_status = await get_history(worker.url, prompt_id, auth=worker.auth())
     if hist_status == 200 and isinstance(hist, dict) and prompt_id in hist:
+        # 任务完成，更新任务历史
+        from app.task_history import update_completed
+        result_data = hist.get(prompt_id, {})
+        if isinstance(result_data, dict):
+            # 将 history 结果存储为 JSON 字符串
+            import json
+            result_json = json.dumps(result_data, ensure_ascii=False)
+            update_completed(prompt_id, result_json=result_json)
+        else:
+            # history 是空字典或者没有这个 prompt_id（正常情况）
+            update_completed(prompt_id, result_json=hist)
+
         return {
             "prompt_id": prompt_id,
             "worker_id": worker_id,

@@ -9,10 +9,12 @@ from fastapi.responses import FileResponse
 from app.routes import workers, prompt, history, queue, view, settings
 from app.dispatcher import run_dispatcher
 from app.health import run_health_loop
-
+from app.task_history import ensure_table
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # 确保任务历史表存在
+    ensure_table()
     dispatch_task = asyncio.create_task(run_dispatcher(interval_seconds=1.0))
     health_task = asyncio.create_task(run_health_loop(interval_seconds=30.0))
     yield
@@ -45,6 +47,7 @@ app.include_router(history.router, prefix="/api")
 app.include_router(queue.router, prefix="/api")
 app.include_router(view.router, prefix="/api")
 app.include_router(settings.router, prefix="/api")
+app.include_router(task_history.router, prefix="/api")
 
 # 前端静态文件目录
 _frontend = Path(__file__).resolve().parent.parent / "frontend" / "dist"

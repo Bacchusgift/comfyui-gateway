@@ -174,11 +174,16 @@ def remove_job(gateway_job_id: str) -> bool:
 
 
 def re_queue_job(job: QueuedJob) -> None:
-    """将已 pop 的 job 重新放回队列，保持优先级顺序。"""
+    """将已 pop 的 job 重新放回队列，保持优先级顺序。
+
+    重要：保留原始 created_at，不要更新为当前时间，避免队列位置自增。
+    """
+    job_dict = job.to_dict()
     if use_mysql():
         _mysql_re_queue_job(job)
         return
     items = _load_pending()
-    items.append(job.to_dict())
+    items.append(job_dict)
+    # 保留原始 created_at，只按 priority 和 created_at 排序
     items.sort(key=lambda x: (-int(x["priority"]), float(x["created_at"])))
     _save_pending(items)
