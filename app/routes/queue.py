@@ -3,15 +3,32 @@ GET /api/queue - 聚合所有 Worker 的队列状态
 GET /api/task/{prompt_id}/status - 单任务状态与进度（queued|running|done|failed）
 GET /api/task/gateway/{gateway_job_id} - 插队任务状态（queued|submitted|running|done|failed），提交后含 prompt_id
 """
+import asyncio
 from fastapi import APIRouter, HTTPException
 
 from app import store
 from app import workers as wm
 from app.client import fetch_queue, get_history, parse_queue_counts
-from app.load_balancer import refresh_worker_load
 from app.priority_queue import is_queued
 
 router = APIRouter(tags=["queue"])
+
+# 聚合 queue 时使用的短超时（秒），避免不可达 Worker 拖垮整个请求
+_QUEUE_FETCH_TIMEOUT = 5
+
+
+async def _fetch_worker_queue(w):
+    """对单个 Worker 拉取 queue，超时或异常返回 None。"""
+    if not w.enabled or not w.healthy:
+        return w, None
+    try:
+        data = await asyncio.wait_for(
+            fetch_queue(w.url, auth=w.auth()),
+            timeout=_QUEUE_FETCH_TIMEOUT,
+        )
+        return w, data
+    except Exception:
+        return w, None
 
 
 @router.get("/task/gateway/{gateway_job_id}")
@@ -52,16 +69,30 @@ async def gateway_job_status(gateway_job_id: str):
 async def aggregated_queue():
     """
     GET /api/queue - 聚合各 Worker 的 running/pending，便于前端与 n8n 查看。
+    并发请求所有 Worker，跳过不健康的，单个超时 5s 不拖慢整体。
     """
-    for w in wm.list_workers():
-        if w.enabled:
-            await refresh_worker_load(w.worker_id)
     workers = wm.list_workers()
+
+    # 并发拉取所有 Worker 的 queue
+    tasks = [_fetch_worker_queue(w) for w in workers]
+    results = await asyncio.gather(*tasks)
+
     worker_list = []
     gateway_queue = []
     total_running = 0
     total_pending = 0
-    for w in workers:
+
+    for w, data in results:
+        if data is not None:
+            running, pending = parse_queue_counts(data)
+            wm.update_worker_load(w.worker_id, running, pending, healthy=True)
+            w.queue_running = running
+            w.queue_pending = pending
+        elif w.enabled and w.healthy:
+            # 拉取失败但之前健康 → 标记不健康
+            wm.update_worker_load(w.worker_id, w.queue_running, w.queue_pending, healthy=False)
+            w.healthy = False
+
         worker_list.append({
             "worker_id": w.worker_id,
             "name": w.name,
@@ -73,7 +104,8 @@ async def aggregated_queue():
         })
         total_running += w.queue_running
         total_pending += w.queue_pending
-        data = await fetch_queue(w.url, auth=w.auth())
+
+        # 解析具体任务列表
         if data:
             for i, item in enumerate(data.get("queue_running") or []):
                 pid = item[0] if isinstance(item, (list, tuple)) and len(item) > 0 else None

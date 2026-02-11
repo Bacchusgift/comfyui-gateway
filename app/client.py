@@ -47,10 +47,10 @@ async def health_check(base_url: str, auth: Optional[tuple[str, str]] = None) ->
         return False, str(e)
     return False, "Unreachable"
 
-async def fetch_queue(base_url: str, auth: Optional[tuple[str, str]] = None) -> Optional[dict]:
-    """GET /queue -> { queue_running: [...], queue_pending: [...] }"""
+async def fetch_queue(base_url: str, auth: Optional[tuple[str, str]] = None, timeout: float = 8) -> Optional[dict]:
+    """GET /queue -> { queue_running: [...], queue_pending: [...] }。默认 8 秒超时。"""
     try:
-        async with _client(auth) as c:
+        async with _client(auth, timeout=timeout) as c:
             r = await c.get(f"{base_url.rstrip('/')}/queue")
             r.raise_for_status()
             return r.json()

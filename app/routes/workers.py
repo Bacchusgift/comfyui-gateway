@@ -1,3 +1,4 @@
+import asyncio
 from typing import Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -27,12 +28,14 @@ class UpdateWorkerBody(BaseModel):
 async def list_workers():
     """GET /api/workers - 列表与状态（含队列、健康）"""
     workers = wm.list_workers()
-    # 对每个 Worker 做一次快速健康探测，确保状态实时
-    for w in workers:
-        if w.enabled:
-            healthy, detail = await health_check(w.url, auth=w.auth())
-            wm.update_worker_load(w.worker_id, w.queue_running, w.queue_pending, healthy=healthy)
-            w.healthy = healthy
+    # 并发对每个 enabled Worker 做健康探测，确保状态实时
+    async def _probe(w):
+        if not w.enabled:
+            return
+        healthy, _ = await health_check(w.url, auth=w.auth())
+        wm.update_worker_load(w.worker_id, w.queue_running, w.queue_pending, healthy=healthy)
+        w.healthy = healthy
+    await asyncio.gather(*[_probe(w) for w in workers])
     arr = []
     for w in workers:
         arr.append({
