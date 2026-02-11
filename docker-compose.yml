@@ -1,0 +1,29 @@
+# ComfyUI Gateway 一键部署
+# 用法：复制 env.example 为 .env 后填写，执行 ./deploy.sh 或 docker compose up -d
+
+services:
+  gateway:
+    build: .
+    image: comfyui-gateway:latest
+    container_name: comfyui-gateway
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8000}:8000"
+    env_file: .env
+    # 使用本 compose 内 Redis 时，在 .env 中设置 REDIS_URL=redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_started
+
+  # 可选：未配置外部 Redis 时使用
+  redis:
+    image: redis:7-alpine
+    container_name: comfyui-gateway-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+volumes:
+  redis_data:
