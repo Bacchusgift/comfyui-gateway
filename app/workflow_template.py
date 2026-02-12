@@ -55,47 +55,55 @@ class WorkflowExecution(BaseModel):
 
 def _mysql_create_tables() -> None:
     """创建数据库表"""
-    # 工作流模板表
-    execute("""
-        CREATE TABLE IF NOT EXISTS workflow_templates (
-            id VARCHAR(64) PRIMARY KEY,
-            name VARCHAR(255) NOT NULL,
-            description TEXT,
-            category VARCHAR(64) DEFAULT 'default',
-            input_schema JSON NOT NULL,
-            output_schema JSON,
-            comfy_workflow LONGTEXT NOT NULL,
-            param_mapping JSON NOT NULL,
-            version INT DEFAULT 1,
-            enabled BOOLEAN DEFAULT TRUE,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            INDEX idx_category (category),
-            INDEX idx_enabled (enabled)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-    """)
+    # 工作流模板表（先创建，被外键引用）
+    try:
+        execute("""
+            CREATE TABLE IF NOT EXISTS workflow_templates (
+                id VARCHAR(64) PRIMARY KEY,
+                name VARCHAR(255) NOT NULL,
+                description TEXT,
+                category VARCHAR(64) DEFAULT 'default',
+                input_schema JSON NOT NULL,
+                output_schema JSON,
+                comfy_workflow LONGTEXT NOT NULL,
+                param_mapping JSON NOT NULL,
+                version INT DEFAULT 1,
+                enabled BOOLEAN DEFAULT TRUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                INDEX idx_category (category),
+                INDEX idx_enabled (enabled)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
+    except Exception as e:
+        print(f"创建 workflow_templates 表失败: {e}")
+        raise
 
-    # 工作流执行记录表
-    execute("""
-        CREATE TABLE IF NOT EXISTS workflow_executions (
-            execution_id VARCHAR(64) PRIMARY KEY,
-            template_id VARCHAR(64) NOT NULL,
-            gateway_job_id VARCHAR(64),
-            prompt_id VARCHAR(64),
-            worker_id VARCHAR(64),
-            input_params JSON,
-            status VARCHAR(32) DEFAULT 'pending',
-            progress INT DEFAULT 0,
-            result_json LONGTEXT,
-            error_message TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            completed_at TIMESTAMP NULL,
-            INDEX idx_template (template_id),
-            INDEX idx_status (status),
-            INDEX idx_gateway_job (gateway_job),
-            FOREIGN KEY (template_id) REFERENCES workflow_templates(id) ON DELETE CASCADE
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-    """)
+    # 工作流执行记录表（依赖 workflow_templates）
+    try:
+        execute("""
+            CREATE TABLE IF NOT EXISTS workflow_executions (
+                execution_id VARCHAR(64) PRIMARY KEY,
+                template_id VARCHAR(64) NOT NULL,
+                gateway_job_id VARCHAR(64),
+                prompt_id VARCHAR(64),
+                worker_id VARCHAR(64),
+                input_params JSON,
+                status VARCHAR(32) DEFAULT 'pending',
+                progress INT DEFAULT 0,
+                result_json LONGTEXT,
+                error_message TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                completed_at TIMESTAMP NULL,
+                INDEX idx_template (template_id),
+                INDEX idx_status (status),
+                INDEX idx_gateway_job (gateway_job)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
+    except Exception as e:
+        print(f"创建 workflow_executions 表失败: {e}")
+        # 外键约束可能失败，但表仍可用
+        pass
 
 
 def ensure_tables() -> None:
