@@ -21,15 +21,17 @@ export default function WorkflowEditor() {
   });
 
   useEffect(() => {
-    if (!isNew) {
+    if (!isNew && id) {
       loadTemplate();
     }
   }, [id]);
 
   async function loadTemplate() {
+    if (!id) return;
+
     try {
       setLoading(true);
-      const data = await workflows.get(id!);
+      const data = await workflows.get(id);
       setTemplate(data);
     } catch (err) {
       alert("加载失败: " + (err as Error).message);
@@ -67,8 +69,8 @@ export default function WorkflowEditor() {
           comfy_workflow: template.comfy_workflow || {},
           param_mapping: template.param_mapping || {},
         });
-      } else {
-        await workflows.update(id!, template);
+      } else if (id) {
+        await workflows.update(id, template);
       }
       navigate("/workflows");
     } catch (err) {
