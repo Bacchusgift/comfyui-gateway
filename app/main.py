@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from app.routes import workers, prompt, history, queue, view, settings, task_history, workflows, auth
+from app.routes import workers, prompt, history, queue, view, settings, task_history, workflows, auth, openapi
 from app.routes.auth import _verify_token
 from app.dispatcher import run_dispatcher
 from app.health import run_health_loop
@@ -18,7 +18,7 @@ from app import apikeys
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
-    """认证中间件：保护 API 路由"""
+    """认证中间件：分离 UI API 和 OpenAPI"""
 
     # 不需要认证的路径
     PUBLIC_PATHS = [
@@ -29,7 +29,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         path = request.url.path
 
         # 静态资源、前端路由不需要认证
-        if not path.startswith("/api"):
+        if not path.startswith("/api") and not path.startswith("/openapi"):
             return await call_next(request)
 
         # 公开 API 不需要认证
@@ -40,14 +40,19 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if request.method == "OPTIONS":
             return await call_next(request)
 
-        # 检查 API Key
-        api_key = request.headers.get("X-API-Key")
-        if api_key:
-            key_info = apikeys.verify_key(api_key)
-            if key_info:
-                return await call_next(request)
+        # OpenAPI (/openapi/*): 只检查 X-API-Key
+        if path.startswith("/openapi"):
+            api_key = request.headers.get("X-API-Key")
+            if api_key:
+                key_info = apikeys.verify_key(api_key)
+                if key_info:
+                    return await call_next(request)
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "需要有效的 X-API-Key"}
+            )
 
-        # 检查 Admin Token
+        # UI API (/api/*): 检查 Admin Token（也支持 API Key）
         authorization = request.headers.get("Authorization")
         if authorization:
             if authorization.startswith("Bearer "):
@@ -59,10 +64,16 @@ class AuthMiddleware(BaseHTTPMiddleware):
             if username:
                 return await call_next(request)
 
-        # 认证失败
+        # 也支持用 API Key 访问 UI API
+        api_key = request.headers.get("X-API-Key")
+        if api_key:
+            key_info = apikeys.verify_key(api_key)
+            if key_info:
+                return await call_next(request)
+
         return JSONResponse(
             status_code=401,
-            content={"detail": "需要认证：请提供有效的 API Key 或管理员 Token"}
+            content={"detail": "需要认证：请提供有效的管理员 Token 或 X-API-Key"}
         )
 
 @asynccontextmanager
@@ -101,7 +112,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# API 统一前缀 /api
+# API 统一前缀 /api (UI 使用，需要管理员 Token)
 app.include_router(auth.router, prefix="/api")
 app.include_router(workers.router, prefix="/api")
 app.include_router(prompt.router, prefix="/api")
@@ -111,6 +122,9 @@ app.include_router(view.router, prefix="/api")
 app.include_router(settings.router, prefix="/api")
 app.include_router(task_history.router, prefix="/api")
 app.include_router(workflows.router, prefix="/api")
+
+# OpenAPI (外部系统使用，只需 X-API-Key)
+app.include_router(openapi.router)
 
 # 前端静态文件目录
 _frontend = Path(__file__).resolve().parent.parent / "frontend" / "dist"
