@@ -50,3 +50,13 @@ CREATE TABLE IF NOT EXISTS settings (
     v   TEXT         DEFAULT NULL,
     updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 6. API Key 管理表（用于 API 认证）
+CREATE TABLE IF NOT EXISTS api_keys (
+    key_id       VARCHAR(36)  NOT NULL PRIMARY KEY,
+    api_key      VARCHAR(64)  NOT NULL UNIQUE,
+    name         VARCHAR(100) NOT NULL COMMENT 'API Key 名称/用途',
+    created_at   BIGINT       NOT NULL COMMENT '创建时间戳（秒）',
+    last_used_at BIGINT       DEFAULT NULL COMMENT '最后使用时间戳（秒）',
+    INDEX idx_api_keys_key (api_key)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
