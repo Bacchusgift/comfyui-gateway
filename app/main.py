@@ -6,11 +6,11 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
-from app.routes import workers, prompt, history, queue, view, settings
+from app.routes import workers, prompt, history, queue, view, settings, task_history
 from app.dispatcher import run_dispatcher
 from app.health import run_health_loop
 from app.progress_monitor import progress_monitor_loop
-from app import task_history
+from app.task_history import ensure_table
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
