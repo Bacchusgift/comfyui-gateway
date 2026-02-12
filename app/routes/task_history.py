@@ -5,7 +5,6 @@ GET /api/tasks - 查询任务列表（分页、过滤）
 GET /api/tasks/{task_id} - 查询单个任务详情
 """
 from fastapi import APIRouter, Query
-from pydantic import BaseModel
 from typing import Optional
 
 from app.task_history import get_by_prompt_id, get_by_task_id, list_tasks
@@ -13,15 +12,13 @@ from app.task_history import get_by_prompt_id, get_by_task_id, list_tasks
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
 
-class TaskListQuery(Query):
-    limit: int = 100
-    offset: int = 0
-    worker_id: Optional[str] = None
-    status: Optional[str] = None  # pending/submitted/running/done/failed
-
-
 @router.get("")
-async def list_tasks(query: TaskListQuery):
+async def list_tasks(
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    worker_id: Optional[str] = Query(None),
+    status: Optional[str] = Query(None)
+):
     """
     GET /api/tasks - 查询任务历史列表
 
@@ -31,15 +28,15 @@ async def list_tasks(query: TaskListQuery):
     {
         "tasks": [...],
         "total": 总数,
-        "limit": query.limit,
-        "offset": query.offset
+        "limit": limit,
+        "offset": offset
     }
     """
     tasks = list_tasks(
-        limit=query.limit,
-        offset=query.offset,
-        worker_id=query.worker_id,
-        status=query.status
+        limit=limit,
+        offset=offset,
+        worker_id=worker_id,
+        status=status
     )
 
     # 计算总数（简单实现）
@@ -48,8 +45,8 @@ async def list_tasks(query: TaskListQuery):
     return {
         "tasks": tasks,
         "total": total,
-        "limit": query.limit,
-        "offset": query.offset
+        "limit": limit,
+        "offset": offset
     }
 
 
