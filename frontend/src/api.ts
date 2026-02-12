@@ -89,3 +89,87 @@ export const prompt = {
   submit: (body: { prompt: Record<string, unknown>; client_id?: string; priority?: number }) =>
     request<PromptSubmitResponse>("/prompt", { method: "POST", body: JSON.stringify(body) }),
 };
+
+// ==================== Workflows ====================
+
+export interface WorkflowTemplate {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  input_schema: Record<string, { type: string; required?: boolean; default?: unknown; description?: string }>;
+  output_schema: Record<string, unknown>;
+  comfy_workflow: Record<string, unknown>;
+  param_mapping: Record<string, string>;
+  version: number;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkflowExecution {
+  execution_id: string;
+  template_id: string;
+  gateway_job_id: string | null;
+  prompt_id: string | null;
+  worker_id: string | null;
+  input_params: Record<string, unknown>;
+  status: "pending" | "queued" | "submitted" | "running" | "done" | "failed";
+  progress: number;
+  result_json: string | null;
+  error_message: string | null;
+  created_at: string;
+  completed_at: string | null;
+}
+
+export interface WorkflowApiDocs {
+  template_id: string;
+  template_name: string;
+  description: string;
+  category: string;
+  endpoints: Record<string, unknown>;
+  parameters: Array<{ name: string; type: string; required: boolean; description: string; default: unknown }>;
+  examples: {
+    curl: string;
+    python: string;
+    javascript: string;
+  };
+}
+
+export const workflows = {
+  // 模板管理
+  list: (category?: string, enabledOnly?: boolean) =>
+    request<{ templates: WorkflowTemplate[]; total: number }>(
+      `/workflows${category ? `?category=${category}` : ""}${enabledOnly !== false ? "" : "&enabled_only=false"}`
+    ),
+  get: (id: string) => request<WorkflowTemplate>(`/workflows/${id}`),
+  create: (body: {
+    name: string;
+    description?: string;
+    category?: string;
+    input_schema: Record<string, unknown>;
+    output_schema?: Record<string, unknown>;
+    comfy_workflow: Record<string, unknown>;
+    param_mapping: Record<string, string>;
+  }) => request<WorkflowTemplate>("/workflows", { method: "POST", body: JSON.stringify(body) }),
+  update: (id: string, body: Partial<WorkflowTemplate>) =>
+    request<WorkflowTemplate>(`/workflows/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+  delete: (id: string) => request<{ message: string }>(`/workflows/${id}`, { method: "DELETE" }),
+
+  // 执行
+  execute: (id: string, body: { params: Record<string, unknown>; client_id?: string; priority?: number }) =>
+    request<{ execution_id: string; template_id: string; status: string; message: string }>(
+      `/workflows/${id}/execute`,
+      { method: "POST", body: JSON.stringify(body) }
+    ),
+
+  // 执行记录
+  getExecution: (executionId: string) => request<WorkflowExecution>(`/workflows/executions/${executionId}`),
+  listExecutions: (templateId?: string, limit = 100) =>
+    request<{ executions: WorkflowExecution[]; total: number }>(
+      `/workflows/executions${templateId ? `?template_id=${templateId}` : ""}&limit=${limit}`
+    ),
+
+  // API 文档
+  getApiDocs: (id: string) => request<WorkflowApiDocs>(`/workflows/${id}/api-docs`),
+};

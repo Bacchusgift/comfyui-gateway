@@ -5,6 +5,7 @@ const nav = [
   { path: "/workers", label: "Workers" },
   { path: "/queue", label: "队列" },
   { path: "/tasks", label: "任务" },
+  { path: "/workflows", label: "工作流" },
   { path: "/submit", label: "提交测试" },
   { path: "/settings", label: "设置" },
 ];
