@@ -25,6 +25,14 @@ MYSQL_USER: str = env("MYSQL_USER") or "root"
 MYSQL_PASSWORD: str = env("MYSQL_PASSWORD") or ""
 MYSQL_DATABASE: str = env("MYSQL_DATABASE") or "comfyui_gateway"
 
+# 管理员账户配置（用于登录后台管理界面）
+ADMIN_USERNAME: str = env("ADMIN_USERNAME") or "admin"
+ADMIN_PASSWORD: str = env("ADMIN_PASSWORD") or "admin123"
+
+# JWT 密钥（用于生成和验证 token）
+JWT_SECRET: str = env("JWT_SECRET") or "your-secret-key-change-in-production"
+JWT_EXPIRE_HOURS: int = int(env("JWT_EXPIRE_HOURS") or "24")
+
 def use_mysql() -> bool:
     """是否启用 MySQL（配置了 MYSQL_DATABASE 时启用）。"""
     return bool(env("MYSQL_DATABASE"))

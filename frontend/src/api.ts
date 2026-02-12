@@ -1,10 +1,30 @@
 const API = "/api";
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const token = localStorage.getItem("auth_token");
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(options?.headers as Record<string, string>),
+  };
+
+  // Add auth token if available
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
   const r = await fetch(API + path, {
     ...options,
-    headers: { "Content-Type": "application/json", ...options?.headers },
+    headers,
   });
+
+  // Handle 401 - redirect to login
+  if (r.status === 401) {
+    localStorage.removeItem("auth_token");
+    localStorage.removeItem("auth_username");
+    window.location.href = "/login";
+    throw new Error("认证已过期，请重新登录");
+  }
+
   if (!r.ok) {
     const err = await r.json().catch(() => ({ detail: r.statusText }));
     throw new Error(typeof err.detail === "string" ? err.detail : JSON.stringify(err));

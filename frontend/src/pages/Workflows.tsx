@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { workflows, type WorkflowTemplate } from "../api";
+import { useToast } from "../components/Toast";
+import { useConfirm } from "../hooks/useConfirm";
 
 interface CategoryStats {
   name: string;
@@ -25,6 +27,8 @@ export default function Workflows() {
   const [filter, setFilter] = useState<"all" | "enabled">("enabled");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const { success, error } = useToast();
+  const { confirm, dialog: confirmDialog } = useConfirm();
 
   useEffect(() => {
     loadData();
@@ -43,7 +47,7 @@ export default function Workflows() {
       setStats(statsData);
     } catch (err) {
       console.error("Failed to load templates:", err);
-      alert("加载失败: " + (err as Error).message);
+      error("加载失败: " + (err as Error).message);
     } finally {
       setLoading(false);
     }
@@ -54,27 +58,32 @@ export default function Workflows() {
       await workflows.update(template.id, { enabled: !template.enabled });
       loadData();
     } catch (err) {
-      alert("更新失败: " + (err as Error).message);
+      error("更新失败: " + (err as Error).message);
     }
   }
 
   async function deleteTemplate(id: string, name: string) {
-    if (!confirm(`确定要删除工作流 "${name}" 吗？`)) return;
+    const ok = await confirm({
+      title: "删除确认",
+      message: `确定要删除工作流 "${name}" 吗？`,
+      variant: "danger",
+    });
+    if (!ok) return;
     try {
       await workflows.delete(id);
       loadData();
     } catch (err) {
-      alert("删除失败: " + (err as Error).message);
+      error("删除失败: " + (err as Error).message);
     }
   }
 
   async function copyTemplate(id: string) {
     try {
       await workflows.copy(id);
-      alert("复制成功！");
+      success("复制成功！");
       loadData();
     } catch (err) {
-      alert("复制失败: " + (err as Error).message);
+      error("复制失败: " + (err as Error).message);
     }
   }
 
@@ -82,7 +91,7 @@ export default function Workflows() {
     try {
       await workflows.export(id);
     } catch (err) {
-      alert("导出失败: " + (err as Error).message);
+      error("导出失败: " + (err as Error).message);
     }
   }
 
@@ -98,10 +107,10 @@ export default function Workflows() {
         const text = await file.text();
         const data = JSON.parse(text);
         await workflows.import(data);
-        alert("导入成功！");
+        success("导入成功！");
         loadData();
       } catch (err) {
-        alert("导入失败: " + (err as Error).message);
+        error("导入失败: " + (err as Error).message);
       }
     };
     input.click();
@@ -110,24 +119,29 @@ export default function Workflows() {
   async function batchOperation(action: "enable" | "disable" | "delete") {
     const ids = Array.from(selectedIds);
     if (ids.length === 0) {
-      alert("请先选择模板");
+      error("请先选择模板");
       return;
     }
 
     const actionText = action === "enable" ? "启用" : action === "disable" ? "禁用" : "删除";
-    if (!confirm(`确定要批量${actionText} ${ids.length} 个模板吗？`)) return;
+    const ok = await confirm({
+      title: "批量操作确认",
+      message: `确定要批量${actionText} ${ids.length} 个模板吗？`,
+      variant: action === "delete" ? "danger" : "warning",
+    });
+    if (!ok) return;
 
     try {
       const result = await workflows.batch(ids, action);
       if (result.failed.length > 0) {
-        alert(`部分操作失败：${result.failed.map((f) => f.error).join(", ")}`);
+        error(`部分操作失败：${result.failed.map((f) => f.error).join(", ")}`);
       } else {
-        alert("操作成功");
+        success("操作成功");
       }
       setSelectedIds(new Set());
       loadData();
     } catch (err) {
-      alert("操作失败: " + (err as Error).message);
+      error("操作失败: " + (err as Error).message);
     }
   }
 
@@ -159,6 +173,7 @@ export default function Workflows() {
 
   return (
     <div className="space-y-6">
+      {confirmDialog}
       {/* 统计卡片 */}
       {stats && (
         <div className="grid grid-cols-4 gap-4">

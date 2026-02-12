@@ -1,12 +1,14 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { workflows, type WorkflowExecution, type WorkflowTemplate } from "../api";
+import { useToast } from "../components/Toast";
 
 export default function WorkflowExecutions() {
   const [executions, setExecutions] = useState<WorkflowExecution[]>([]);
   const [templates, setTemplates] = useState<Record<string, WorkflowTemplate>>({});
   const [loading, setLoading] = useState(true);
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const { info } = useToast();
 
   useEffect(() => {
     loadData();
@@ -160,7 +162,7 @@ export default function WorkflowExecutions() {
                       {exec.status === "done" && exec.result_json && (
                         <button
                           onClick={() => {
-                            alert("结果: " + exec.result_json);
+                            info("结果: " + exec.result_json);
                           }}
                           className="text-blue-600 hover:text-blue-700 mr-3"
                         >

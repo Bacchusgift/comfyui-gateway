@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { workflows, type WorkflowTemplate, type WorkflowExecution } from "../api";
+import { useToast } from "../components/Toast";
 
 export default function WorkflowExecute() {
   const { id } = useParams();
@@ -11,6 +12,7 @@ export default function WorkflowExecute() {
   const [executing, setExecuting] = useState(false);
   const [executionId, setExecutionId] = useState<string | null>(null);
   const [execution, setExecution] = useState<WorkflowExecution | null>(null);
+  const { error, warning, info } = useToast();
 
   useEffect(() => {
     loadTemplate();
@@ -37,7 +39,7 @@ export default function WorkflowExecute() {
       });
       setParams(defaults);
     } catch (err) {
-      alert("加载失败: " + (err as Error).message);
+      error("加载失败: " + (err as Error).message);
       navigate("/workflows");
     }
   }
@@ -48,7 +50,7 @@ export default function WorkflowExecute() {
     // 验证必填参数
     for (const [key, def] of Object.entries(template.input_schema)) {
       if (def.required && !params[key]) {
-        alert(`请填写必填参数: ${key}`);
+        warning(`请填写必填参数: ${key}`);
         return;
       }
     }
@@ -59,7 +61,7 @@ export default function WorkflowExecute() {
       setExecutionId(result.execution_id);
       await checkStatus();
     } catch (err) {
-      alert("执行失败: " + (err as Error).message);
+      error("执行失败: " + (err as Error).message);
     } finally {
       setExecuting(false);
     }
@@ -238,7 +240,7 @@ export default function WorkflowExecute() {
               <div className="bg-green-50 border border-green-200 rounded p-3">
                 <p className="text-sm text-green-700 mb-2">执行完成！</p>
                 <button
-                  onClick={() => alert("结果: " + execution.result_json)}
+                  onClick={() => info("结果: " + execution.result_json)}
                   className="text-sm text-green-700 underline"
                 >
                   查看完整结果

@@ -1,23 +1,76 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
 import asyncio
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 
-from app.routes import workers, prompt, history, queue, view, settings, task_history, workflows
+from app.routes import workers, prompt, history, queue, view, settings, task_history, workflows, auth
+from app.routes.auth import _verify_token
 from app.dispatcher import run_dispatcher
 from app.health import run_health_loop
 from app.progress_monitor import progress_monitor_loop
 from app.task_history import ensure_table
 from app.workflow_template import ensure_tables
+from app import apikeys
+
+
+class AuthMiddleware(BaseHTTPMiddleware):
+    """认证中间件：保护 API 路由"""
+
+    # 不需要认证的路径
+    PUBLIC_PATHS = [
+        "/api/auth/login",
+    ]
+
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+
+        # 静态资源、前端路由不需要认证
+        if not path.startswith("/api"):
+            return await call_next(request)
+
+        # 公开 API 不需要认证
+        if path in self.PUBLIC_PATHS:
+            return await call_next(request)
+
+        # OPTIONS 请求直接放行（CORS 预检）
+        if request.method == "OPTIONS":
+            return await call_next(request)
+
+        # 检查 API Key
+        api_key = request.headers.get("X-API-Key")
+        if api_key:
+            key_info = apikeys.verify_key(api_key)
+            if key_info:
+                return await call_next(request)
+
+        # 检查 Admin Token
+        authorization = request.headers.get("Authorization")
+        if authorization:
+            if authorization.startswith("Bearer "):
+                token = authorization[7:]
+            else:
+                token = authorization
+
+            username = _verify_token(token)
+            if username:
+                return await call_next(request)
+
+        # 认证失败
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "需要认证：请提供有效的 API Key 或管理员 Token"}
+        )
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # 确保数据库表存在
     ensure_table()
     ensure_tables()
+    apikeys.ensure_table()
     dispatch_task = asyncio.create_task(run_dispatcher(interval_seconds=1.0))
     health_task = asyncio.create_task(run_health_loop(interval_seconds=30.0))
     progress_task = asyncio.create_task(progress_monitor_loop(interval_seconds=2.0))
@@ -37,6 +90,9 @@ app = FastAPI(
     description="Load-balancing gateway for ComfyUI workers; drop-in replacement for ComfyUI API.",
     lifespan=lifespan,
 )
+
+# 添加认证中间件（注意顺序：先 CORS，后 Auth）
+app.add_middleware(AuthMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -46,6 +102,7 @@ app.add_middleware(
 )
 
 # API 统一前缀 /api
+app.include_router(auth.router, prefix="/api")
 app.include_router(workers.router, prefix="/api")
 app.include_router(prompt.router, prefix="/api")
 app.include_router(history.router, prefix="/api")

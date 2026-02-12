@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { workflows, type WorkflowTemplate } from "../api";
+import { useToast } from "../components/Toast";
+import { usePrompt } from "../hooks/usePrompt";
 
 export default function WorkflowEditor() {
   const { id } = useParams();
@@ -21,6 +23,8 @@ export default function WorkflowEditor() {
     param_mapping: {},
     enabled: true,
   });
+  const { error, warning } = useToast();
+  const { prompt, dialog: promptDialog } = usePrompt();
 
   useEffect(() => {
     if (!isNew && id) {
@@ -36,7 +40,7 @@ export default function WorkflowEditor() {
       const data = await workflows.get(id);
       setTemplate(data);
     } catch (err) {
-      alert("加载失败: " + (err as Error).message);
+      error("加载失败: " + (err as Error).message);
       navigate("/workflows");
     } finally {
       setLoading(false);
@@ -45,17 +49,17 @@ export default function WorkflowEditor() {
 
   async function saveTemplate() {
     if (!template.name?.trim()) {
-      alert("请输入工作流名称");
+      warning("请输入工作流名称");
       return;
     }
 
     if (Object.keys(template.input_schema || {}).length === 0) {
-      alert("请至少定义一个输入参数");
+      warning("请至少定义一个输入参数");
       return;
     }
 
     if (Object.keys(template.param_mapping || {}).length === 0) {
-      alert("请至少定义一个参数映射");
+      warning("请至少定义一个参数映射");
       return;
     }
 
@@ -76,17 +80,24 @@ export default function WorkflowEditor() {
       }
       navigate("/workflows");
     } catch (err) {
-      alert("保存失败: " + (err as Error).message);
+      error("保存失败: " + (err as Error).message);
     } finally {
       setSaving(false);
     }
   }
 
-  function addInputParam() {
-    const key = prompt("参数名称（如: prompt）:");
+  async function addInputParam() {
+    const key = await prompt({
+      message: "参数名称（如: prompt）:",
+      placeholder: "prompt",
+    });
     if (!key) return;
 
-    const type = prompt("参数类型 (string/integer/number):", "string");
+    const type = await prompt({
+      message: "参数类型 (string/integer/number):",
+      placeholder: "string",
+      defaultValue: "string",
+    });
     if (!type) return;
 
     setTemplate({
@@ -129,6 +140,7 @@ export default function WorkflowEditor() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
+      {promptDialog}
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-semibold text-gray-900">
           {isNew ? "新建工作流模板" : "编辑工作流模板"}

@@ -1,5 +1,7 @@
 import { Routes, Route } from "react-router-dom";
 import Layout from "./components/Layout";
+import ProtectedRoute from "./components/ProtectedRoute";
+import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Workers from "./pages/Workers";
 import Queue from "./pages/Queue";
@@ -11,24 +13,36 @@ import WorkflowEditor from "./pages/WorkflowEditor";
 import WorkflowExecute from "./pages/WorkflowExecute";
 import WorkflowApiDocs from "./pages/WorkflowApiDocs";
 import WorkflowExecutions from "./pages/WorkflowExecutions";
+import ApiKeys from "./pages/ApiKeys";
 
 export default function App() {
   return (
-    <Layout>
-      <Routes>
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/workers" element={<Workers />} />
-        <Route path="/queue" element={<Queue />} />
-        <Route path="/tasks" element={<Tasks />} />
-        <Route path="/submit" element={<Submit />} />
-        <Route path="/settings" element={<Settings />} />
-        <Route path="/workflows" element={<Workflows />} />
-        <Route path="/workflows/new" element={<WorkflowEditor />} />
-        <Route path="/workflows/:id/edit" element={<WorkflowEditor />} />
-        <Route path="/workflows/:id/execute" element={<WorkflowExecute />} />
-        <Route path="/workflows/:id/docs" element={<WorkflowApiDocs />} />
-        <Route path="/workflows/executions" element={<WorkflowExecutions />} />
-      </Routes>
-    </Layout>
+    <Routes>
+      <Route path="/login" element={<Login />} />
+      <Route
+        path="/*"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <Routes>
+                <Route path="/" element={<Dashboard />} />
+                <Route path="/workers" element={<Workers />} />
+                <Route path="/queue" element={<Queue />} />
+                <Route path="/tasks" element={<Tasks />} />
+                <Route path="/submit" element={<Submit />} />
+                <Route path="/settings" element={<Settings />} />
+                <Route path="/apikeys" element={<ApiKeys />} />
+                <Route path="/workflows" element={<Workflows />} />
+                <Route path="/workflows/new" element={<WorkflowEditor />} />
+                <Route path="/workflows/:id/edit" element={<WorkflowEditor />} />
+                <Route path="/workflows/:id/execute" element={<WorkflowExecute />} />
+                <Route path="/workflows/:id/docs" element={<WorkflowApiDocs />} />
+                <Route path="/workflows/executions" element={<WorkflowExecutions />} />
+              </Routes>
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+    </Routes>
   );
 }

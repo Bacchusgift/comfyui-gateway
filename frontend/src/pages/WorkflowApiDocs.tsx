@@ -1,12 +1,14 @@
 import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { workflows, type WorkflowApiDocs } from "../api";
+import { useToast } from "../components/Toast";
 
 export default function WorkflowApiDocs() {
   const { id } = useParams();
   const [docs, setDocs] = useState<WorkflowApiDocs | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"curl" | "python" | "javascript">("curl");
+  const { error, success } = useToast();
 
   useEffect(() => {
     loadDocs();
@@ -18,7 +20,7 @@ export default function WorkflowApiDocs() {
       const data = await workflows.getApiDocs(id!);
       setDocs(data);
     } catch (err) {
-      alert("加载失败: " + (err as Error).message);
+      error("加载失败: " + (err as Error).message);
     } finally {
       setLoading(false);
     }
@@ -26,7 +28,7 @@ export default function WorkflowApiDocs() {
 
   function copyCode(code: string) {
     navigator.clipboard.writeText(code);
-    alert("已复制到剪贴板");
+    success("已复制到剪贴板");
   }
 
   if (loading) {

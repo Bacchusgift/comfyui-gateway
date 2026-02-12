@@ -1,4 +1,5 @@
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
 
 const nav = [
   { path: "/", label: "仪表盘" },
@@ -7,11 +8,20 @@ const nav = [
   { path: "/tasks", label: "任务" },
   { path: "/workflows", label: "工作流" },
   { path: "/submit", label: "提交测试" },
+  { path: "/apikeys", label: "API Keys" },
   { path: "/settings", label: "设置" },
 ];
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const loc = useLocation();
+  const { username, logout } = useAuth();
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    logout();
+    navigate("/login");
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b border-gray-200">
@@ -31,6 +41,15 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 </Link>
               ))}
             </nav>
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-gray-600">{username}</span>
+              <button
+                onClick={handleLogout}
+                className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded"
+              >
+                退出
+              </button>
+            </div>
           </div>
         </div>
       </header>
