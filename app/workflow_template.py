@@ -85,7 +85,7 @@ def _mysql_create_tables() -> None:
             CREATE TABLE IF NOT EXISTS workflow_executions (
                 execution_id VARCHAR(64) PRIMARY KEY,
                 template_id VARCHAR(64) NOT NULL,
-                gateway_job_id VARCHAR(64),
+                `gateway_job_id` VARCHAR(64),
                 prompt_id VARCHAR(64),
                 worker_id VARCHAR(64),
                 input_params JSON,
@@ -97,7 +97,8 @@ def _mysql_create_tables() -> None:
                 completed_at TIMESTAMP NULL,
                 INDEX idx_template (template_id),
                 INDEX idx_status (status),
-                INDEX idx_gateway_job (gateway_job)
+                INDEX idx_gateway_job (`gateway_job_id`),
+                INDEX idx_created_at (created_at)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """)
     except Exception as e:
