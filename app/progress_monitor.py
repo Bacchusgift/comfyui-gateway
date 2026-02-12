@@ -4,6 +4,7 @@
 import asyncio
 import logging
 from typing import Dict, Optional
+from datetime import datetime
 
 from app.store import get_task_worker
 from app.workers import get_worker
@@ -60,7 +61,7 @@ async def check_and_update_progress() -> None:
     if not _active_tasks:
         return
 
-    logger.debug(f"检查 {_active_tasks.len()} 个正在执行的任务的进度")
+    logger.debug(f"检查 {len(_active_tasks)} 个正在执行的任务的进度")
 
     # 收集需要更新的任务（避免在迭代中修改字典）
     tasks_to_update = []
@@ -104,7 +105,7 @@ async def check_and_update_progress() -> None:
                 # 如果进度达到 100%，停止监听并标记完成
                 if progress >= 100:
                     logger.info(f"任务 {task_id} 已完成 (progress: 100%)，停止监听")
-                    result_json = f'{{"progress": {progress}, "completed_at": "{asyncio.get_event_loop().time().isoformat()}"}}'
+                    result_json = f'{{"progress": {progress}, "completed_at": "{datetime.now().isoformat()}"}}'
                     update_completed(task_id, result_json=result_json)
                     stop_monitoring(task_id)
                 else:
@@ -125,7 +126,7 @@ async def progress_monitor_loop(interval_seconds: float = PROGRESS_POLL_INTERVAL
     """
     定期循环：检查所有正在执行的任务进度并更新到数据库。
     """
-    logger.info("进度监听器启动，间隔: {interval_seconds} 秒")
+    logger.info(f"进度监听器启动，间隔: {interval_seconds} 秒")
 
     while True:
         try:

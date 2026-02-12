@@ -10,7 +10,7 @@ from app.routes import workers, prompt, history, queue, view, settings
 from app.dispatcher import run_dispatcher
 from app.health import run_health_loop
 from app.progress_monitor import progress_monitor_loop
-from app.task_history import ensure_table
+from app import task_history
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
