@@ -15,9 +15,11 @@ Execution API:
 - GET    /api/workflows/executions            - 执行历史
 """
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import Response
 from pydantic import BaseModel
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 import json
+from datetime import datetime, timedelta
 
 from app.workflow_template import (
     WorkflowTemplate, WorkflowExecution,
@@ -26,6 +28,8 @@ from app.workflow_template import (
     create_execution, update_execution, get_execution, list_executions
 )
 from app.priority_queue import push  # 复用现有的优先队列
+from app.config import use_mysql
+from app.db import fetchone, fetchall, execute
 
 
 router = APIRouter(prefix="/workflows", tags=["workflows"])
@@ -385,3 +389,241 @@ print(status.json())"""
             "javascript": js_example
         }
     }
+
+
+# ==================== 新增功能 API ====================
+
+class BatchOperationRequest(BaseModel):
+    """批量操作请求"""
+    template_ids: List[str]
+    action: str  # enable/disable/delete
+
+
+@router.post("/batch")
+async def batch_operation(req: BatchOperationRequest):
+    """
+    批量操作工作流模板
+
+    支持的操作：
+    - enable: 批量启用
+    - disable: 批量禁用
+    - delete: 批量删除
+    """
+    results = {"success": [], "failed": []}
+
+    for template_id in req.template_ids:
+        try:
+            if req.action == "enable":
+                update_template(template_id, WorkflowTemplate(enabled=True))
+            elif req.action == "disable":
+                update_template(template_id, WorkflowTemplate(enabled=False))
+            elif req.action == "delete":
+                delete_template(template_id)
+            else:
+                raise HTTPException(status_code=400, detail=f"Unknown action: {req.action}")
+
+            results["success"].append(template_id)
+        except Exception as e:
+            results["failed"].append({"id": template_id, "error": str(e)})
+
+    return results
+
+
+@router.post("/{template_id}/copy")
+async def copy_template(template_id: str):
+    """
+    复制工作流模板
+
+    创建一个副本，名称会自动添加 "(副本)" 后缀。
+    """
+    template = get_template(template_id)
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+
+    # 创建副本
+    new_template = WorkflowTemplate(
+        name=f"{template.name} (副本)",
+        description=template.description,
+        category=template.category,
+        input_schema=template.input_schema,
+        output_schema=template.output_schema,
+        comfy_workflow=template.comfy_workflow,
+        param_mapping=template.param_mapping,
+        enabled=False  # 副本默认禁用
+    )
+
+    created = create_template(new_template)
+    return created
+
+
+@router.get("/{template_id}/export")
+async def export_template(template_id: str):
+    """
+    导出工作流模板为 JSON
+
+    返回完整的模板定义，可用于备份或分享。
+    """
+    template = get_template(template_id)
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+
+    export_data = {
+        "version": "1.0",
+        "exported_at": datetime.now().isoformat(),
+        "template": template.model_dump()
+    }
+
+    return Response(
+        content=json.dumps(export_data, ensure_ascii=False, indent=2),
+        media_type="application/json",
+        headers={
+            "Content-Disposition": f'attachment; filename="{template.name}_{template_id}.json"'
+        }
+    )
+
+
+@router.post("/import")
+async def import_template(req: dict):
+    """
+    导入工作流模板
+
+    从导出的 JSON 文件导入模板。
+    请求体：{"data": <导出的JSON内容>}
+    """
+    if "data" not in req:
+        raise HTTPException(status_code=400, detail="Missing 'data' field")
+
+    try:
+        import_data = req["data"]
+        if isinstance(import_data, str):
+            import_data = json.loads(import_data)
+
+        # 兼容新旧格式
+        if "template" in import_data:
+            template_data = import_data["template"]
+        else:
+            template_data = import_data
+
+        # 生成新 ID（避免冲突）
+        template_data["id"] = f"wf_{uuid.uuid4().hex[:8]}"
+
+        template = WorkflowTemplate(**template_data)
+        created = create_template(template)
+
+        return {
+            "message": "Template imported successfully",
+            "template_id": created.id,
+            "template_name": created.name
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Import failed: {str(e)}")
+
+
+@router.get("/categories/list")
+async def list_categories():
+    """
+    列出所有工作流分类
+
+    返回系统中所有使用的分类及其模板数量。
+    """
+    if not use_mysql():
+        return {"categories": []}
+
+    rows = fetchall("""
+        SELECT category, COUNT(*) as count, SUM(CASE WHEN enabled THEN 1 ELSE 0 END) as enabled_count
+        FROM workflow_templates
+        GROUP BY category
+        ORDER BY category
+    """)
+
+    categories = [
+        {
+            "name": row["category"],
+            "total": row["count"],
+            "enabled": row["enabled_count"]
+        }
+        for row in rows
+    ]
+
+    return {"categories": categories}
+
+
+@router.get("/stats/summary")
+async def get_stats():
+    """
+    获取工作流统计摘要
+
+    返回模板数量、执行数量、成功率等统计数据。
+    """
+    if not use_mysql():
+        return {
+            "total_templates": 0,
+            "enabled_templates": 0,
+            "total_executions": 0,
+            "success_rate": 0
+        }
+
+    # 模板统计
+    template_stats = fetchone("""
+        SELECT
+            COUNT(*) as total,
+            SUM(CASE WHEN enabled THEN 1 ELSE 0 END) as enabled
+        FROM workflow_templates
+    """)
+
+    # 执行统计
+    execution_stats = fetchone("""
+        SELECT
+            COUNT(*) as total,
+            SUM(CASE WHEN status = 'done' THEN 1 ELSE 0 END) as success,
+            SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed
+        FROM workflow_executions
+        WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+    """)
+
+    total_executions = execution_stats["total"] or 0
+    success_count = execution_stats["success"] or 0
+    success_rate = (success_count / total_executions * 100) if total_executions > 0 else 0
+
+    return {
+        "total_templates": template_stats["total"] or 0,
+        "enabled_templates": template_stats["enabled"] or 0,
+        "total_executions_30d": total_executions,
+        "success_rate_30d": round(success_rate, 2),
+        "success_count_30d": success_count,
+        "failed_count_30d": execution_stats["failed"] or 0
+    }
+
+
+@router.get("/{template_id}/executions/history")
+async def get_template_execution_history(
+    template_id: str,
+    limit: int = Query(20, ge=1, le=100)
+):
+    """
+    获取特定模板的执行历史
+
+    返回最近 N 条执行记录，用于分析模板使用情况。
+    """
+    if not use_mysql():
+        return {"executions": [], "total": 0}
+
+    rows = fetchall("""
+        SELECT * FROM workflow_executions
+        WHERE template_id = %s
+        ORDER BY created_at DESC
+        LIMIT %s
+    """, (template_id, limit))
+
+    executions = []
+    for row in rows:
+        executions.append({
+            "execution_id": row["execution_id"],
+            "status": row["status"],
+            "progress": row["progress"],
+            "created_at": str(row["created_at"]),
+            "completed_at": str(row["completed_at"]) if row["completed_at"] else None,
+            "error_message": row["error_message"]
+        })
+
+    return {"executions": executions, "total": len(executions)}

@@ -156,6 +156,49 @@ export const workflows = {
     request<WorkflowTemplate>(`/workflows/${id}`, { method: "PUT", body: JSON.stringify(body) }),
   delete: (id: string) => request<{ message: string }>(`/workflows/${id}`, { method: "DELETE" }),
 
+  // 复制模板
+  copy: (id: string) => request<WorkflowTemplate>(`/workflows/${id}/copy`, { method: "POST" }),
+
+  // 导出/导入
+  export: async (id: string) => {
+    const response = await fetch(`/api/workflows/${id}/export`);
+    if (!response.ok) throw new Error("Export failed");
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `workflow_${id}.json`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  },
+  import: (data: Record<string, unknown>) =>
+    request<{ message: string; template_id: string; template_name: string }>(
+      "/workflows/import",
+      { method: "POST", body: JSON.stringify({ data }) }
+    ),
+
+  // 批量操作
+  batch: (templateIds: string[], action: "enable" | "disable" | "delete") =>
+    request<{ success: string[]; failed: Array<{ id: string; error: string }> }>(
+      "/workflows/batch",
+      { method: "POST", body: JSON.stringify({ template_ids: templateIds, action }) }
+    ),
+
+  // 分类
+  listCategories: () =>
+    request<{ categories: Array<{ name: string; total: number; enabled: number }> }>("/workflows/categories/list"),
+
+  // 统计
+  getStats: () =>
+    request<{
+      total_templates: number;
+      enabled_templates: number;
+      total_executions_30d: number;
+      success_rate_30d: number;
+      success_count_30d: number;
+      failed_count_30d: number;
+    }>("/workflows/stats/summary"),
+
   // 执行
   execute: (id: string, body: { params: Record<string, unknown>; client_id?: string; priority?: number }) =>
     request<{ execution_id: string; template_id: string; status: string; message: string }>(
@@ -168,6 +211,10 @@ export const workflows = {
   listExecutions: (templateId?: string, limit = 100) =>
     request<{ executions: WorkflowExecution[]; total: number }>(
       `/workflows/executions${templateId ? `?template_id=${templateId}` : ""}&limit=${limit}`
+    ),
+  getTemplateHistory: (templateId: string, limit = 20) =>
+    request<{ executions: Array<{ execution_id: string; status: string; created_at: string }> }>(
+      `/workflows/${templateId}/executions/history?limit=${limit}`
     ),
 
   // API 文档
