@@ -5,7 +5,9 @@ import { workflows, type WorkflowTemplate } from "../api";
 export default function WorkflowEditor() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const isNew = id === "new";
+  // 注意：/workflows/new 路由没有 :id 参数，所以 id 是 undefined
+  // /workflows/:id/edit 路由有 :id 参数，所以 id 是实际值
+  const isNew = !id;
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
