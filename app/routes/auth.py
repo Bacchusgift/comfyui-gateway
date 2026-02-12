@@ -7,10 +7,22 @@ import hmac
 import hashlib
 import base64
 
-from app.config import ADMIN_USERNAME, ADMIN_PASSWORD, JWT_SECRET, JWT_EXPIRE_HOURS
+from app.config import JWT_SECRET, JWT_EXPIRE_HOURS
+from app.db import fetchone
 from app import apikeys
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+def _get_admin_credentials() -> tuple:
+    """从 settings 表获取管理员账号密码"""
+    username_row = fetchone("SELECT v FROM settings WHERE k = %s", ("admin_username",))
+    password_row = fetchone("SELECT v FROM settings WHERE k = %s", ("admin_password",))
+
+    username = username_row["v"] if username_row else "admin"
+    password = password_row["v"] if password_row else "admin123"
+
+    return username, password
 
 
 def _generate_token(username: str, timestamp: int) -> str:
@@ -111,7 +123,9 @@ class CreateApiKeyBody(BaseModel):
 @router.post("/login")
 def login(body: LoginBody):
     """管理员登录"""
-    if body.username != ADMIN_USERNAME or body.password != ADMIN_PASSWORD:
+    admin_username, admin_password = _get_admin_credentials()
+
+    if body.username != admin_username or body.password != admin_password:
         raise HTTPException(status_code=401, detail="用户名或密码错误")
 
     timestamp = int(time.time())
