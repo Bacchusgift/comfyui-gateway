@@ -27,7 +27,7 @@ from app.workflow_template import (
     inject_params_to_workflow, validate_params,
     create_execution, update_execution, get_execution, list_executions
 )
-from app.priority_queue import push  # 复用现有的优先队列
+from app.priority_queue import add_job  # 复用现有的优先队列
 from app.config import use_mysql
 from app.db import fetchone, fetchall, execute
 
@@ -204,14 +204,11 @@ async def execute_workflow(template_id: str, req: ExecuteWorkflowRequest):
     create_execution(execution)
 
     # 5. 提交到优先队列（复用现有队列系统）
-    from app.priority_queue import Job
-    job = Job(
-        gateway_job_id=execution.execution_id,  # 使用 execution_id 作为 gateway_job_id
+    job = add_job(
         prompt=final_workflow,
         client_id=req.client_id or f"workflow_{template_id}",
         priority=req.priority
     )
-    push(job)
 
     # 6. 更新执行记录
     update_execution(execution.execution_id, status="queued")
