@@ -6,16 +6,18 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
-from app.routes import workers, prompt, history, queue, view, settings, task_history
+from app.routes import workers, prompt, history, queue, view, settings, task_history, workflows
 from app.dispatcher import run_dispatcher
 from app.health import run_health_loop
 from app.progress_monitor import progress_monitor_loop
 from app.task_history import ensure_table
+from app.workflow_template import ensure_tables
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 确保任务历史表存在
+    # 确保数据库表存在
     ensure_table()
+    ensure_tables()
     dispatch_task = asyncio.create_task(run_dispatcher(interval_seconds=1.0))
     health_task = asyncio.create_task(run_health_loop(interval_seconds=30.0))
     progress_task = asyncio.create_task(progress_monitor_loop(interval_seconds=2.0))
@@ -51,6 +53,7 @@ app.include_router(queue.router, prefix="/api")
 app.include_router(view.router, prefix="/api")
 app.include_router(settings.router, prefix="/api")
 app.include_router(task_history.router, prefix="/api")
+app.include_router(workflows.router, prefix="/api")
 
 # 前端静态文件目录
 _frontend = Path(__file__).resolve().parent.parent / "frontend" / "dist"
