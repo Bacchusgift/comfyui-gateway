@@ -82,6 +82,7 @@ async def task_status(prompt_id: str):
 
     # 查 history
     hist, hist_status = await get_history(worker.url, prompt_id, auth=worker.auth())
+    print(f"[openapi] history 查询: status={hist_status}, prompt_id in hist={prompt_id in (hist or {})}")
     if hist_status == 200 and isinstance(hist, dict) and prompt_id in hist:
         return {
             "prompt_id": prompt_id,
@@ -92,24 +93,30 @@ async def task_status(prompt_id: str):
 
     # 查 queue
     data = await fetch_queue(worker.url, auth=worker.auth())
+    print(f"[openapi] queue 原始数据: {data}")
+
     if not data:
-        # Worker 不可达，但任务映射存在，返回 submitted
         return {"prompt_id": prompt_id, "worker_id": worker_id, "status": "submitted", "progress": None}
 
-    for item in (data.get("queue_running") or []):
+    running = data.get("queue_running") or []
+    pending = data.get("queue_pending") or []
+    print(f"[openapi] running 队列 ({len(running)}): {running[:3]}...")
+    print(f"[openapi] pending 队列 ({len(pending)}): {pending[:3]}...")
+
+    for item in running:
         pid = item[0] if isinstance(item, (list, tuple)) and len(item) > 0 else None
+        print(f"[openapi] running item: {item}, 提取的 pid={pid}")
         if pid == prompt_id:
             from app.client import get_progress
             progress, _ = await get_progress(worker.url, prompt_id, auth=worker.auth())
             return {"prompt_id": prompt_id, "worker_id": worker_id, "status": "running", "progress": progress}
 
-    for item in (data.get("queue_pending") or []):
+    for item in pending:
         pid = item[0] if isinstance(item, (list, tuple)) and len(item) > 0 else None
         if pid == prompt_id:
             return {"prompt_id": prompt_id, "worker_id": worker_id, "status": "queued", "progress": 0}
 
     # 任务映射存在但队列中找不到，说明刚提交或正在处理中
-    # 返回 submitted 而不是 failed，避免误判
     return {"prompt_id": prompt_id, "worker_id": worker_id, "status": "submitted", "progress": None}
 
 
