@@ -12,6 +12,7 @@ from app.routes.auth import _verify_token
 from app.dispatcher import run_dispatcher
 from app.health import run_health_loop
 from app.progress_monitor import progress_monitor_loop
+from app.websocket_monitor import websocket_monitor_loop, connect_all_workers
 from app.task_history import ensure_table
 from app.workflow_template import ensure_tables as ensure_workflow_tables
 from app.store import ensure_tables as ensure_store_tables
@@ -109,14 +110,20 @@ async def lifespan(app: FastAPI):
     ensure_table()  # task_history
     ensure_workflow_tables()  # workflow templates
     apikeys.ensure_table()  # api_keys
+
+    # 连接所有 Worker 的 WebSocket（用于实时进度）
+    await connect_all_workers()
+
     dispatch_task = asyncio.create_task(run_dispatcher(interval_seconds=1.0))
     health_task = asyncio.create_task(run_health_loop(interval_seconds=30.0))
     progress_task = asyncio.create_task(progress_monitor_loop(interval_seconds=2.0))
+    websocket_task = asyncio.create_task(websocket_monitor_loop())
     yield
     dispatch_task.cancel()
     health_task.cancel()
     progress_task.cancel()
-    for t in (dispatch_task, health_task, progress_task):
+    websocket_task.cancel()
+    for t in (dispatch_task, health_task, progress_task, websocket_task):
         try:
             await t
         except asyncio.CancelledError:
