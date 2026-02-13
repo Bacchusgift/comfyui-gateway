@@ -32,7 +32,7 @@ fi
 
 echo "构建并启动容器..."
 $COMPOSE_CMD build --no-cache
-$COMPOSE_CMD up -d
+$COMPOSE_CMD up -d --force-recreate
 
 PORT=${PORT:-8000}
 echo ""
