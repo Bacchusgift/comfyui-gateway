@@ -98,6 +98,7 @@ export interface TaskItem {
   task_id: string;
   prompt_id: string | null;
   worker_id: string | null;
+  worker_name: string | null;
   priority: number;
   status: "pending" | "submitted" | "running" | "done" | "failed";
   progress: number;
@@ -106,6 +107,24 @@ export interface TaskItem {
   started_at: string | null;
   completed_at: string | null;
   result_json: string | null;
+}
+
+export interface OutputFile {
+  filename: string;
+  subfolder: string;
+  type: string;
+  url: string;
+}
+
+export interface TaskOutput {
+  node_id: string;
+  files: OutputFile[];
+}
+
+export interface TaskOutputResponse {
+  prompt_id: string;
+  status: string;
+  outputs: TaskOutput[];
 }
 
 export interface TaskListResponse {
@@ -130,6 +149,7 @@ export const task = {
   history: (promptId: string) => request<Record<string, unknown>>(`/history/${promptId}`),
   gatewayStatus: (gatewayJobId: string) =>
     request<{ gateway_job_id: string; status: string; prompt_id: string | null }>(`/task/gateway/${gatewayJobId}`),
+  output: (promptId: string) => request<TaskOutputResponse>(`/openapi/output/${promptId}`),
 };
 
 export type PromptSubmitResponse =

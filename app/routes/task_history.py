@@ -120,6 +120,16 @@ async def list_tasks_api(
             status=status
         )
 
+    # 为每个任务添加 worker_name
+    from app import workers as wm
+    for task in tasks:
+        w_id = task.get("worker_id")
+        if w_id:
+            worker = wm.get_worker(w_id)
+            task["worker_name"] = worker.name if worker else w_id
+        else:
+            task["worker_name"] = None
+
     # 计算总数（简单实现）
     total = len(tasks)
 

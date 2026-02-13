@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
-import { task as api, type TaskItem, type TaskStatus } from "../api";
+import { task as api, type TaskItem, type TaskStatus, type TaskOutputResponse } from "../api";
 
 type GatewayStatus = { gateway_job_id: string; status: string; prompt_id: string | null };
 
@@ -37,6 +37,11 @@ export default function Tasks() {
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState<string>("");
+
+  // 输出文件状态
+  const [outputTaskId, setOutputTaskId] = useState<string | null>(null);
+  const [outputData, setOutputData] = useState<TaskOutputResponse | null>(null);
+  const [outputLoading, setOutputLoading] = useState(false);
 
   // 单个任务查询状态
   const [queryInput, setQueryInput] = useState(gatewayJobIdParam || promptIdParam);
@@ -140,6 +145,21 @@ export default function Tasks() {
     api.history(pid).then(setHistory).catch((e) => setErr(e.message));
   };
 
+  // 加载输出文件
+  const loadOutput = async (promptId: string) => {
+    setOutputLoading(true);
+    setOutputTaskId(promptId);
+    setOutputData(null);
+    try {
+      const data = await api.output(promptId);
+      setOutputData(data);
+    } catch (e) {
+      console.error("Failed to load output:", e);
+    } finally {
+      setOutputLoading(false);
+    }
+  };
+
   const totalPages = Math.ceil(total / PAGE_SIZE);
   const progress = result?.progress ?? null;
 
@@ -195,20 +215,20 @@ export default function Tasks() {
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">状态</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">进度</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">提交时间</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">完成时间</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">操作</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
                   {tasks.map((task) => (
                     <tr key={task.task_id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 text-sm font-mono text-gray-900">
+                      <td className="px-4 py-3 text-sm font-mono text-gray-900" title={task.task_id}>
                         {task.task_id.slice(0, 8)}...
                       </td>
-                      <td className="px-4 py-3 text-sm font-mono text-gray-500">
+                      <td className="px-4 py-3 text-sm font-mono text-gray-500" title={task.prompt_id || ""}>
                         {task.prompt_id ? `${task.prompt_id.slice(0, 8)}...` : "-"}
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-500">
-                        {task.worker_id || "-"}
+                      <td className="px-4 py-3 text-sm text-gray-500" title={task.worker_id || ""}>
+                        {task.worker_name || task.worker_id || "-"}
                       </td>
                       <td className="px-4 py-3">
                         <span className={`px-2 py-0.5 rounded text-xs ${statusColor[task.status] || "bg-gray-100 text-gray-800"}`}>
@@ -229,8 +249,20 @@ export default function Tasks() {
                       <td className="px-4 py-3 text-sm text-gray-500">
                         {formatTime(task.submitted_at)}
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-500">
-                        {formatTime(task.completed_at)}
+                      <td className="px-4 py-3">
+                        {task.status === "done" && task.prompt_id && (
+                          <button
+                            onClick={() => loadOutput(task.prompt_id!)}
+                            className="text-blue-600 hover:text-blue-800 text-sm"
+                          >
+                            查看结果
+                          </button>
+                        )}
+                        {task.status === "failed" && task.error_message && (
+                          <span className="text-red-500 text-xs" title={task.error_message}>
+                            错误
+                          </span>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -242,7 +274,7 @@ export default function Tasks() {
             {totalPages > 1 && (
               <div className="flex items-center justify-between mt-4">
                 <div className="text-sm text-gray-500">
-                  共 {total} 条记录
+                  共 {total} 条记录，第 {page + 1} / {totalPages} 页
                 </div>
                 <div className="flex items-center gap-2">
                   <button
@@ -252,9 +284,6 @@ export default function Tasks() {
                   >
                     上一页
                   </button>
-                  <span className="text-sm text-gray-600">
-                    {page + 1} / {totalPages}
-                  </span>
                   <button
                     onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
                     disabled={page >= totalPages - 1}
@@ -268,6 +297,72 @@ export default function Tasks() {
           </>
         )}
       </div>
+
+      {/* 输出文件弹窗 */}
+      {(outputTaskId || outputData) && (
+        <div className="bg-white rounded-lg border p-4">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-gray-900">输出文件</h2>
+            <button
+              onClick={() => { setOutputTaskId(null); setOutputData(null); }}
+              className="text-gray-400 hover:text-gray-600"
+            >
+              关闭
+            </button>
+          </div>
+
+          {outputLoading ? (
+            <div className="text-center py-4 text-gray-500">加载中...</div>
+          ) : outputData ? (
+            <div className="space-y-4">
+              {outputData.outputs.length === 0 ? (
+                <div className="text-gray-500">暂无输出文件</div>
+              ) : (
+                outputData.outputs.map((output) => (
+                  <div key={output.node_id} className="border rounded p-3">
+                    <div className="text-sm text-gray-500 mb-2">节点 {output.node_id}</div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                      {output.files.map((file, idx) => (
+                        <div key={idx} className="border rounded p-2">
+                          {file.type === "output" && file.filename.match(/\.(png|jpg|jpeg|gif|webp)$/i) ? (
+                            <img
+                              src={file.url}
+                              alt={file.filename}
+                              className="w-full h-24 object-cover rounded mb-2"
+                            />
+                          ) : file.filename.match(/\.(mp4|webm|mov)$/i) ? (
+                            <video
+                              src={file.url}
+                              className="w-full h-24 object-cover rounded mb-2"
+                              controls
+                            />
+                          ) : (
+                            <div className="w-full h-24 bg-gray-100 rounded flex items-center justify-center mb-2">
+                              <span className="text-gray-400 text-xs">文件</span>
+                            </div>
+                          )}
+                          <div className="text-xs text-gray-500 truncate" title={file.filename}>
+                            {file.filename}
+                          </div>
+                          <a
+                            href={file.url}
+                            download={file.filename}
+                            className="text-blue-600 hover:text-blue-800 text-xs"
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            下载
+                          </a>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          ) : null}
+        </div>
+      )}
 
       {/* 任务查询 */}
       <div className="border-t pt-6">
