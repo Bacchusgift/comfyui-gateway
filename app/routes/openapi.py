@@ -47,10 +47,13 @@ async def submit_prompt(body: PromptBody):
         raise HTTPException(status_code=status, detail=err or "Worker request failed")
     if isinstance(data, dict) and "prompt_id" in data:
         prompt_id = data["prompt_id"]
+        print(f"[openapi] 任务提交成功: prompt_id={prompt_id}, worker_id={worker.worker_id}")
         store.set_task_worker(prompt_id, worker.worker_id)
         # 记录任务历史
         upsert_by_prompt_id(prompt_id, worker.worker_id, priority=body.priority or 0)
         wm.update_worker_load(worker.worker_id, worker.queue_running + 1, worker.queue_pending, healthy=True)
+    else:
+        print(f"[openapi] Worker 返回数据中没有 prompt_id: {data}")
     return data
 
 
@@ -61,6 +64,15 @@ async def task_status(prompt_id: str):
     返回: prompt_id, worker_id, status (submitted|queued|running|done|failed), progress
     """
     worker_id = store.get_task_worker(prompt_id)
+
+    # 如果 store 中找不到，尝试从 task_history 查找
+    if not worker_id:
+        from app.task_history import get_by_prompt_id
+        task_record = get_by_prompt_id(prompt_id)
+        if task_record:
+            worker_id = task_record.get("worker_id")
+            print(f"[openapi] 从 task_history 找到任务: prompt_id={prompt_id}, worker_id={worker_id}")
+
     if not worker_id:
         raise HTTPException(status_code=404, detail="Task not found")
 

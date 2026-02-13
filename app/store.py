@@ -78,15 +78,18 @@ def _get_redis():
 def set_task_worker(prompt_id: str, worker_id: str) -> None:
     if use_mysql():
         _mysql_set_task_worker(prompt_id, worker_id)
+        print(f"[store] MySQL 存储 task_worker: {prompt_id} -> {worker_id}")
         return
     try:
         r = _get_redis()
         if r:
             r.set("gateway:task:" + prompt_id, worker_id)
+            print(f"[store] Redis 存储 task_worker: {prompt_id} -> {worker_id}")
             return
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[store] Redis 存储失败: {e}")
     _memory[prompt_id] = worker_id
+    print(f"[store] 内存存储 task_worker: {prompt_id} -> {worker_id}")
 
 
 def get_task_worker(prompt_id: str) -> Optional[str]:
