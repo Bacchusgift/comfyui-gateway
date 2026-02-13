@@ -14,7 +14,17 @@ export class ComfyUiGatewayApi implements ICredentialType {
 			type: 'string',
 			default: '',
 			placeholder: 'https://your-gateway.example.com',
-			description: 'ComfyUI Gateway 根地址（不要带结尾斜杠）；网关前的 Basic 认证可在请求头中另行配置',
+			description: 'ComfyUI Gateway 根地址（不要带结尾斜杠）',
+			required: true,
+		},
+		{
+			displayName: 'API Key',
+			name: 'apiKey',
+			type: 'string',
+			typeOptions: { password: true },
+			default: '',
+			placeholder: 'cg_xxxxx',
+			description: '从网关管理后台生成的 API Key',
 			required: true,
 		},
 	];
@@ -22,7 +32,10 @@ export class ComfyUiGatewayApi implements ICredentialType {
 	test: ICredentialTestRequest = {
 		request: {
 			baseURL: '={{ $credentials.baseUrl }}',
-			url: '/api/workers',
+			url: '/openapi/queue',
+			headers: {
+				'X-API-Key': '={{ $credentials.apiKey }}',
+			},
 		},
 	};
 }
