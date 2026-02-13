@@ -43,6 +43,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const data = await response.json();
+
+    // 立即写入 localStorage，避免导航时读取不到
+    localStorage.setItem("auth_token", data.token);
+    localStorage.setItem("auth_username", data.username);
+
     setToken(data.token);
     setUsername(data.username);
   };
