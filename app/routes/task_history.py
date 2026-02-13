@@ -38,7 +38,8 @@ async def _sync_single_task(prompt_id: str, worker_id: str) -> None:
             return
 
         for item in data.get("queue_running") or []:
-            pid = item[0] if isinstance(item, (list, tuple)) and len(item) > 0 else None
+            # ComfyUI 队列格式: [序号, prompt_id, workflow, ...]
+            pid = item[1] if isinstance(item, (list, tuple)) and len(item) > 1 else None
             if pid == prompt_id:
                 # 尝试获取进度
                 try:
@@ -50,7 +51,8 @@ async def _sync_single_task(prompt_id: str, worker_id: str) -> None:
                 return
 
         for item in data.get("queue_pending") or []:
-            pid = item[0] if isinstance(item, (list, tuple)) and len(item) > 0 else None
+            # ComfyUI 队列格式: [序号, prompt_id, workflow, ...]
+            pid = item[1] if isinstance(item, (list, tuple)) and len(item) > 1 else None
             if pid == prompt_id:
                 sync_task_status(prompt_id, status="queued", progress=0, worker_id=worker_id)
                 return

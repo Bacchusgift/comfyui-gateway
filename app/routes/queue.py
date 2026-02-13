@@ -56,11 +56,11 @@ async def gateway_job_status(gateway_job_id: str):
     if not data:
         return {"gateway_job_id": gateway_job_id, "status": "submitted", "prompt_id": prompt_id}
     for item in data.get("queue_running") or []:
-        pid = item[0] if isinstance(item, (list, tuple)) and len(item) > 0 else None
+        pid = item[1] if isinstance(item, (list, tuple)) and len(item) > 1 else None
         if pid == prompt_id:
             return {"gateway_job_id": gateway_job_id, "status": "running", "prompt_id": prompt_id}
     for item in data.get("queue_pending") or []:
-        pid = item[0] if isinstance(item, (list, tuple)) and len(item) > 0 else None
+        pid = item[1] if isinstance(item, (list, tuple)) and len(item) > 1 else None
         if pid == prompt_id:
             return {"gateway_job_id": gateway_job_id, "status": "submitted", "prompt_id": prompt_id}
     return {"gateway_job_id": gateway_job_id, "status": "failed", "prompt_id": prompt_id}
@@ -108,7 +108,7 @@ async def aggregated_queue():
         # 解析具体任务列表
         if data:
             for i, item in enumerate(data.get("queue_running") or []):
-                pid = item[0] if isinstance(item, (list, tuple)) and len(item) > 0 else None
+                pid = item[1] if isinstance(item, (list, tuple)) and len(item) > 1 else None
                 if pid:
                     gateway_queue.append({
                         "prompt_id": pid,
@@ -118,7 +118,7 @@ async def aggregated_queue():
                         "position": i + 1,
                     })
             for i, item in enumerate(data.get("queue_pending") or []):
-                pid = item[0] if isinstance(item, (list, tuple)) and len(item) > 0 else None
+                pid = item[1] if isinstance(item, (list, tuple)) and len(item) > 1 else None
                 if pid:
                     gateway_queue.append({
                         "prompt_id": pid,
@@ -191,7 +191,8 @@ async def task_status(prompt_id: str):
     running = data.get("queue_running") or []
     pending = data.get("queue_pending") or []
     for item in running:
-        pid = item[0] if isinstance(item, (list, tuple)) and len(item) > 0 else None
+        # ComfyUI 队列格式: [序号, prompt_id, workflow, ...]
+        pid = item[1] if isinstance(item, (list, tuple)) and len(item) > 1 else None
         if pid == prompt_id:
             # 任务正在执行中，尝试获取实时进度
             from app.client import get_progress
@@ -205,7 +206,8 @@ async def task_status(prompt_id: str):
                 "message": f"Executing {f'({progress:.0f}%)' if progress is not None else ''}",
             }
     for item in pending:
-        pid = item[0] if isinstance(item, (list, tuple)) and len(item) > 0 else None
+        # ComfyUI 队列格式: [序号, prompt_id, workflow, ...]
+        pid = item[1] if isinstance(item, (list, tuple)) and len(item) > 1 else None
         if pid == prompt_id:
             return {
                 "prompt_id": prompt_id,

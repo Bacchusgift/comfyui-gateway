@@ -58,17 +58,13 @@ async def fetch_queue(base_url: str, auth: Optional[tuple[str, str]] = None, tim
         return None
 
 def parse_queue_counts(data: Optional[dict]) -> tuple[int, int]:
+    """解析队列数据，返回 (running_count, pending_count)"""
     running = 0
     pending = 0
     if not data:
         return 0, 0
-    for item in data.get("queue_running") or []:
-        if isinstance(item, list) and len(item) >= 1:
-            running += 1
-        else:
-            running += 1
-    for item in data.get("queue_pending") or []:
-        pending += 1
+    running = len(data.get("queue_running") or [])
+    pending = len(data.get("queue_pending") or [])
     return running, pending
 
 async def post_prompt(base_url: str, body: dict, auth: Optional[tuple[str, str]] = None) -> tuple[Optional[dict], int]:

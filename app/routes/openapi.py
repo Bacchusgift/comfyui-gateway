@@ -104,15 +104,16 @@ async def task_status(prompt_id: str):
     print(f"[openapi] pending 队列 ({len(pending)}): {pending[:3]}...")
 
     for item in running:
-        pid = item[0] if isinstance(item, (list, tuple)) and len(item) > 0 else None
-        print(f"[openapi] running item: {item}, 提取的 pid={pid}")
+        # ComfyUI 队列格式: [序号, prompt_id, workflow, ...]
+        pid = item[1] if isinstance(item, (list, tuple)) and len(item) > 1 else None
         if pid == prompt_id:
             from app.client import get_progress
             progress, _ = await get_progress(worker.url, prompt_id, auth=worker.auth())
             return {"prompt_id": prompt_id, "worker_id": worker_id, "status": "running", "progress": progress}
 
     for item in pending:
-        pid = item[0] if isinstance(item, (list, tuple)) and len(item) > 0 else None
+        # ComfyUI 队列格式: [序号, prompt_id, workflow, ...]
+        pid = item[1] if isinstance(item, (list, tuple)) and len(item) > 1 else None
         if pid == prompt_id:
             return {"prompt_id": prompt_id, "worker_id": worker_id, "status": "queued", "progress": 0}
 
