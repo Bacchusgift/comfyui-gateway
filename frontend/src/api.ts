@@ -149,7 +149,7 @@ export const task = {
   history: (promptId: string) => request<Record<string, unknown>>(`/history/${promptId}`),
   gatewayStatus: (gatewayJobId: string) =>
     request<{ gateway_job_id: string; status: string; prompt_id: string | null }>(`/task/gateway/${gatewayJobId}`),
-  output: (promptId: string) => request<TaskOutputResponse>(`/openapi/output/${promptId}`),
+  output: (promptId: string) => request<TaskOutputResponse>(`/output/${promptId}`),
 };
 
 export type PromptSubmitResponse =

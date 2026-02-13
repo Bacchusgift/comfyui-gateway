@@ -121,6 +121,27 @@ def _mysql_list(limit: int = 100, offset: int = 0, worker_id: Optional[str] = No
     return fetchall(sql, params)
 
 
+def _mysql_count(worker_id: Optional[str] = None, status: Optional[str] = None) -> int:
+    """获取任务总数（用于分页）"""
+    from app.db import fetchone
+    sql = "SELECT COUNT(*) as cnt FROM task_history"
+    params = []
+
+    where_clauses = []
+    if worker_id:
+        where_clauses.append("worker_id = %s")
+        params.append(worker_id)
+    if status:
+        where_clauses.append("status = %s")
+        params.append(status)
+
+    if where_clauses:
+        sql += " WHERE " + " AND ".join(where_clauses)
+
+    row = fetchone(sql, params)
+    return row["cnt"] if row else 0
+
+
 def _mysql_get_by_prompt_id(prompt_id: str) -> Optional[dict]:
     from app.db import fetchone
     row = fetchone("SELECT * FROM task_history WHERE prompt_id = %s ORDER BY submitted_at DESC LIMIT 1", (prompt_id,))
@@ -290,6 +311,17 @@ def list_tasks(limit: int = 100, offset: int = 0, worker_id: Optional[str] = Non
 
         # 分页
         return items[offset:offset + limit]
+
+
+def count_tasks(worker_id: Optional[str] = None, status: Optional[str] = None) -> int:
+    """获取任务总数（用于分页）。"""
+    if use_mysql():
+        return _mysql_count(worker_id=worker_id, status=status)
+    else:
+        items = _redis_load()
+        if status:
+            items = [item for item in items if item.get("status") == status]
+        return len(items)
 
 
 def ensure_table() -> None:

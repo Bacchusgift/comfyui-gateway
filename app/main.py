@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from app.routes import workers, prompt, history, queue, view, settings, task_history, workflows, auth, openapi
+from app.routes import workers, prompt, history, queue, view, settings, task_history, workflows, auth, openapi, output
 from app.routes.auth import _verify_token
 from app.dispatcher import run_dispatcher
 from app.health import run_health_loop
@@ -156,6 +156,7 @@ app.include_router(view.router, prefix="/api")
 app.include_router(settings.router, prefix="/api")
 app.include_router(task_history.router, prefix="/api")
 app.include_router(workflows.router, prefix="/api")
+app.include_router(output.router, prefix="/api")
 
 # OpenAPI (外部系统使用，只需 X-API-Key)
 app.include_router(openapi.router)

@@ -8,7 +8,7 @@ import asyncio
 from fastapi import APIRouter, Query
 from typing import Optional
 
-from app.task_history import get_by_prompt_id, get_by_task_id, list_tasks, sync_task_status
+from app.task_history import get_by_prompt_id, get_by_task_id, list_tasks, count_tasks, sync_task_status
 from app import store
 from app import workers as wm
 from app.client import fetch_queue, get_history
@@ -130,8 +130,8 @@ async def list_tasks_api(
         else:
             task["worker_name"] = None
 
-    # 计算总数（简单实现）
-    total = len(tasks)
+    # 获取总数（用于分页）
+    total = count_tasks(worker_id=worker_id, status=status)
 
     return {
         "tasks": tasks,
