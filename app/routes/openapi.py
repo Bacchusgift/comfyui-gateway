@@ -71,7 +71,6 @@ async def task_status(prompt_id: str):
         task_record = get_by_prompt_id(prompt_id)
         if task_record:
             worker_id = task_record.get("worker_id")
-            print(f"[openapi] 从 task_history 找到任务: prompt_id={prompt_id}, worker_id={worker_id}")
 
     if not worker_id:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -82,7 +81,6 @@ async def task_status(prompt_id: str):
 
     # 查 history
     hist, hist_status = await get_history(worker.url, prompt_id, auth=worker.auth())
-    print(f"[openapi] history 查询: status={hist_status}, prompt_id in hist={prompt_id in (hist or {})}")
     if hist_status == 200 and isinstance(hist, dict) and prompt_id in hist:
         return {
             "prompt_id": prompt_id,
@@ -93,25 +91,20 @@ async def task_status(prompt_id: str):
 
     # 查 queue
     data = await fetch_queue(worker.url, auth=worker.auth())
-    print(f"[openapi] queue 原始数据: {data}")
 
     if not data:
         return {"prompt_id": prompt_id, "worker_id": worker_id, "status": "submitted", "progress": None}
 
-    running = data.get("queue_running") or []
-    pending = data.get("queue_pending") or []
-    print(f"[openapi] running 队列 ({len(running)}): {running[:3]}...")
-    print(f"[openapi] pending 队列 ({len(pending)}): {pending[:3]}...")
-
-    for item in running:
+    for item in (data.get("queue_running") or []):
         # ComfyUI 队列格式: [序号, prompt_id, workflow, ...]
         pid = item[1] if isinstance(item, (list, tuple)) and len(item) > 1 else None
         if pid == prompt_id:
-            from app.client import get_progress
-            progress, _ = await get_progress(worker.url, prompt_id, auth=worker.auth())
+            # 尝试从 WebSocket 缓存获取进度
+            from app.websocket_monitor import get_task_progress
+            progress = get_task_progress(prompt_id)
             return {"prompt_id": prompt_id, "worker_id": worker_id, "status": "running", "progress": progress}
 
-    for item in pending:
+    for item in (data.get("queue_pending") or []):
         # ComfyUI 队列格式: [序号, prompt_id, workflow, ...]
         pid = item[1] if isinstance(item, (list, tuple)) and len(item) > 1 else None
         if pid == prompt_id:
