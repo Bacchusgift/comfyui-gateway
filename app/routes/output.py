@@ -2,10 +2,10 @@
 任务输出文件 API - 获取任务生成的图片、视频等文件。
 
 GET /api/output/{prompt_id} - 获取任务输出文件列表
-GET /api/view/{prompt_id} - 下载/预览具体文件
+GET /api/view/{prompt_id} - 下载/预览具体文件（支持 token 参数鉴权）
 """
 from urllib.parse import urlencode
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Query
 from fastapi.responses import Response
 from typing import Optional
 import httpx
@@ -15,6 +15,7 @@ from app import workers as wm
 from app.client import get_history
 from app.task_history import get_by_prompt_id
 from app.config import WORKER_REQUEST_TIMEOUT
+from app.routes.auth import _verify_token
 
 router = APIRouter(tags=["output"])
 
@@ -25,7 +26,7 @@ async def get_output_files(prompt_id: str, request: Request):
     GET /api/output/{prompt_id}
 
     获取任务的所有输出文件信息（从 history 中提取）。
-    返回文件列表，包含可直接访问的 URL。
+    返回文件列表，包含可直接访问的 URL（带 token 参数）。
     """
     worker_id = store.get_task_worker(prompt_id)
     if not worker_id:
@@ -48,6 +49,11 @@ async def get_output_files(prompt_id: str, request: Request):
     task_hist = hist[prompt_id]
     outputs = task_hist.get("outputs", {})
 
+    # 获取 token 用于生成鉴权 URL
+    token = request.headers.get("Authorization", "").replace("Bearer ", "")
+    if not token:
+        token = request.query_params.get("token", "")
+
     # 构建返回的文件列表
     base_url = str(request.base_url).rstrip("/")
     output_list = []
@@ -62,6 +68,8 @@ async def get_output_files(prompt_id: str, request: Request):
                 subfolder = img.get("subfolder", "")
                 file_type = img.get("type", "output")
                 view_url = f"{base_url}/api/view/{prompt_id}?filename={filename}&subfolder={subfolder}&type={file_type}"
+                if token:
+                    view_url += f"&token={token}"
                 files.append({
                     "filename": filename,
                     "subfolder": subfolder,
@@ -76,6 +84,8 @@ async def get_output_files(prompt_id: str, request: Request):
                 subfolder = vid.get("subfolder", "")
                 file_type = vid.get("type", "output")
                 view_url = f"{base_url}/api/view/{prompt_id}?filename={filename}&subfolder={subfolder}&type={file_type}"
+                if token:
+                    view_url += f"&token={token}"
                 files.append({
                     "filename": filename,
                     "subfolder": subfolder,
@@ -90,6 +100,8 @@ async def get_output_files(prompt_id: str, request: Request):
                 subfolder = aud.get("subfolder", "")
                 file_type = aud.get("type", "output")
                 view_url = f"{base_url}/api/view/{prompt_id}?filename={filename}&subfolder={subfolder}&type={file_type}"
+                if token:
+                    view_url += f"&token={token}"
                 files.append({
                     "filename": filename,
                     "subfolder": subfolder,
@@ -116,13 +128,23 @@ async def proxy_view(
     filename: str,
     subfolder: str = "",
     type: str = "output",
+    token: Optional[str] = Query(None),
 ):
     """
-    GET /api/view/{prompt_id}?filename=xxx&subfolder=xxx&type=output
+    GET /api/view/{prompt_id}?filename=xxx&subfolder=xxx&type=output&token=xxx
 
     代理到对应 Worker 的 /view 接口获取文件。
-    通过 prompt_id 自动定位 Worker。
+    通过 token 参数或 Authorization 头鉴权。
     """
+    # 验证 token
+    if not token:
+        raise HTTPException(status_code=401, detail="Missing token")
+
+    try:
+        _verify_token(token)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
     worker_id = store.get_task_worker(prompt_id)
     if not worker_id:
         task_record = get_by_prompt_id(prompt_id)

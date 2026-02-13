@@ -26,6 +26,203 @@ const statusColor: Record<string, string> = {
 
 const PAGE_SIZE = 20;
 
+// 模态框组件
+function OutputModal({
+  promptId,
+  onClose
+}: {
+  promptId: string;
+  onClose: () => void;
+}) {
+  const [data, setData] = useState<TaskOutputResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<{ url: string; filename: string; type: string } | null>(null);
+
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+    api.output(promptId)
+      .then(setData)
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [promptId]);
+
+  // 按 ESC 关闭
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handleEsc);
+    return () => window.removeEventListener("keydown", handleEsc);
+  }, [onClose]);
+
+  // 获取 token 用于 URL
+  const token = localStorage.getItem("auth_token");
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      {/* 遮罩层 */}
+      <div
+        className="absolute inset-0 bg-black/50"
+        onClick={onClose}
+      />
+
+      {/* 模态框内容 */}
+      <div className="relative bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col m-4">
+        {/* 头部 */}
+        <div className="flex items-center justify-between px-6 py-4 border-b">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">任务输出</h2>
+            <p className="text-sm text-gray-500 mt-1">Prompt ID: {promptId}</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 p-2"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* 内容区 */}
+        <div className="flex-1 overflow-auto p-6">
+          {loading && (
+            <div className="flex items-center justify-center py-12">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+              <span className="ml-3 text-gray-500">加载中...</span>
+            </div>
+          )}
+
+          {error && (
+            <div className="text-center py-12">
+              <div className="text-red-500 mb-2">加载失败</div>
+              <div className="text-gray-500 text-sm">{error}</div>
+            </div>
+          )}
+
+          {data && (
+            <div className="space-y-6">
+              {/* 文件网格 */}
+              {data.outputs.length === 0 ? (
+                <div className="text-center py-12 text-gray-500">
+                  暂无输出文件
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                  {data.outputs.flatMap((output) =>
+                    output.files.map((file, idx) => {
+                      const isImage = file.filename.match(/\.(png|jpg|jpeg|gif|webp)$/i);
+                      const isVideo = file.filename.match(/\.(mp4|webm|mov)$/i);
+                      const fileUrl = token ? `${file.url}&token=${token}` : file.url;
+
+                      return (
+                        <div
+                          key={`${output.node_id}-${idx}`}
+                          className="border rounded-lg overflow-hidden cursor-pointer hover:shadow-lg transition-shadow"
+                          onClick={() => setSelectedFile({ url: fileUrl, filename: file.filename, type: isImage ? 'image' : isVideo ? 'video' : 'file' })}
+                        >
+                          {/* 缩略图 */}
+                          <div className="aspect-square bg-gray-100 flex items-center justify-center">
+                            {isImage ? (
+                              <img
+                                src={fileUrl}
+                                alt={file.filename}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : isVideo ? (
+                              <div className="w-full h-full flex items-center justify-center bg-gray-800">
+                                <svg className="w-12 h-12 text-white" fill="currentColor" viewBox="0 0 24 24">
+                                  <path d="M8 5v14l11-7z" />
+                                </svg>
+                              </div>
+                            ) : (
+                              <svg className="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                              </svg>
+                            )}
+                          </div>
+                          {/* 文件名 */}
+                          <div className="p-2">
+                            <div className="text-xs text-gray-500">节点 {output.node_id}</div>
+                            <div className="text-sm text-gray-900 truncate" title={file.filename}>
+                              {file.filename}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* 底部 */}
+        <div className="px-6 py-4 border-t bg-gray-50 flex justify-end">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-gray-700 hover:text-gray-900"
+          >
+            关闭
+          </button>
+        </div>
+
+        {/* 预览弹窗 */}
+        {selectedFile && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/75" onClick={() => setSelectedFile(null)}>
+            <div className="relative max-w-full max-h-full p-4" onClick={(e) => e.stopPropagation()}>
+              <button
+                onClick={() => setSelectedFile(null)}
+                className="absolute -top-2 -right-2 bg-white rounded-full p-2 shadow-lg hover:bg-gray-100"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+              {selectedFile.type === 'image' && (
+                <img
+                  src={selectedFile.url}
+                  alt={selectedFile.filename}
+                  className="max-w-[80vw] max-h-[80vh] object-contain rounded-lg"
+                />
+              )}
+              {selectedFile.type === 'video' && (
+                <video
+                  src={selectedFile.url}
+                  controls
+                  autoPlay
+                  className="max-w-[80vw] max-h-[80vh] rounded-lg"
+                />
+              )}
+              {selectedFile.type === 'file' && (
+                <div className="bg-white rounded-lg p-8 text-center">
+                  <svg className="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  <div className="text-gray-900 mb-2">{selectedFile.filename}</div>
+                  <a
+                    href={selectedFile.url}
+                    download={selectedFile.filename}
+                    className="text-blue-600 hover:text-blue-800"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    点击下载
+                  </a>
+                </div>
+              )}
+              <div className="text-center text-white mt-2 text-sm">{selectedFile.filename}</div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function Tasks() {
   const [searchParams] = useSearchParams();
   const promptIdParam = searchParams.get("prompt_id") || "";
@@ -38,10 +235,8 @@ export default function Tasks() {
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState<string>("");
 
-  // 输出文件状态
-  const [outputTaskId, setOutputTaskId] = useState<string | null>(null);
-  const [outputData, setOutputData] = useState<TaskOutputResponse | null>(null);
-  const [outputLoading, setOutputLoading] = useState(false);
+  // 模态框状态
+  const [modalPromptId, setModalPromptId] = useState<string | null>(null);
 
   // 单个任务查询状态
   const [queryInput, setQueryInput] = useState(gatewayJobIdParam || promptIdParam);
@@ -145,21 +340,6 @@ export default function Tasks() {
     api.history(pid).then(setHistory).catch((e) => setErr(e.message));
   };
 
-  // 加载输出文件
-  const loadOutput = async (promptId: string) => {
-    setOutputLoading(true);
-    setOutputTaskId(promptId);
-    setOutputData(null);
-    try {
-      const data = await api.output(promptId);
-      setOutputData(data);
-    } catch (e) {
-      console.error("Failed to load output:", e);
-    } finally {
-      setOutputLoading(false);
-    }
-  };
-
   const totalPages = Math.ceil(total / PAGE_SIZE);
   const progress = result?.progress ?? null;
 
@@ -252,7 +432,7 @@ export default function Tasks() {
                       <td className="px-4 py-3">
                         {task.status === "done" && task.prompt_id && (
                           <button
-                            onClick={() => loadOutput(task.prompt_id!)}
+                            onClick={() => setModalPromptId(task.prompt_id!)}
                             className="text-blue-600 hover:text-blue-800 text-sm"
                           >
                             查看结果
@@ -297,72 +477,6 @@ export default function Tasks() {
           </>
         )}
       </div>
-
-      {/* 输出文件弹窗 */}
-      {(outputTaskId || outputData) && (
-        <div className="bg-white rounded-lg border p-4">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-gray-900">输出文件</h2>
-            <button
-              onClick={() => { setOutputTaskId(null); setOutputData(null); }}
-              className="text-gray-400 hover:text-gray-600"
-            >
-              关闭
-            </button>
-          </div>
-
-          {outputLoading ? (
-            <div className="text-center py-4 text-gray-500">加载中...</div>
-          ) : outputData ? (
-            <div className="space-y-4">
-              {outputData.outputs.length === 0 ? (
-                <div className="text-gray-500">暂无输出文件</div>
-              ) : (
-                outputData.outputs.map((output) => (
-                  <div key={output.node_id} className="border rounded p-3">
-                    <div className="text-sm text-gray-500 mb-2">节点 {output.node_id}</div>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                      {output.files.map((file, idx) => (
-                        <div key={idx} className="border rounded p-2">
-                          {file.type === "output" && file.filename.match(/\.(png|jpg|jpeg|gif|webp)$/i) ? (
-                            <img
-                              src={file.url}
-                              alt={file.filename}
-                              className="w-full h-24 object-cover rounded mb-2"
-                            />
-                          ) : file.filename.match(/\.(mp4|webm|mov)$/i) ? (
-                            <video
-                              src={file.url}
-                              className="w-full h-24 object-cover rounded mb-2"
-                              controls
-                            />
-                          ) : (
-                            <div className="w-full h-24 bg-gray-100 rounded flex items-center justify-center mb-2">
-                              <span className="text-gray-400 text-xs">文件</span>
-                            </div>
-                          )}
-                          <div className="text-xs text-gray-500 truncate" title={file.filename}>
-                            {file.filename}
-                          </div>
-                          <a
-                            href={file.url}
-                            download={file.filename}
-                            className="text-blue-600 hover:text-blue-800 text-xs"
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            下载
-                          </a>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          ) : null}
-        </div>
-      )}
 
       {/* 任务查询 */}
       <div className="border-t pt-6">
@@ -423,20 +537,34 @@ export default function Tasks() {
             )}
             {result.message && <p className="text-sm text-gray-500">{result.message}</p>}
             {result.status === "done" && (
-              <div>
-                <button onClick={loadHistory} className="text-blue-600 hover:underline text-sm">
-                  查看 History 结果
+              <div className="flex gap-4">
+                <button
+                  onClick={() => setModalPromptId(result.prompt_id)}
+                  className="text-blue-600 hover:underline text-sm"
+                >
+                  查看结果
                 </button>
-                {history && (
-                  <pre className="mt-2 p-3 bg-gray-50 rounded text-xs overflow-auto max-h-96">
-                    {JSON.stringify(history, null, 2)}
-                  </pre>
-                )}
+                <button onClick={loadHistory} className="text-blue-600 hover:underline text-sm">
+                  查看 History
+                </button>
               </div>
+            )}
+            {history && (
+              <pre className="mt-2 p-3 bg-gray-50 rounded text-xs overflow-auto max-h-96">
+                {JSON.stringify(history, null, 2)}
+              </pre>
             )}
           </div>
         )}
       </div>
+
+      {/* 模态框 */}
+      {modalPromptId && (
+        <OutputModal
+          promptId={modalPromptId}
+          onClose={() => setModalPromptId(null)}
+        />
+      )}
     </div>
   );
 }
