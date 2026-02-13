@@ -39,7 +39,13 @@ def get_cursor():
 def execute(sql: str, args: Optional[tuple] = None) -> None:
     with get_cursor() as cur:
         if cur:
-            cur.execute(sql, args or ())
+            try:
+                cur.execute(sql, args or ())
+            except Exception as e:
+                print(f"[db] SQL 执行失败: {e}")
+                print(f"[db] SQL: {sql}")
+                print(f"[db] Args: {args}")
+                raise
 
 
 def fetchone(sql: str, args: Optional[tuple] = None) -> Optional[dict]:

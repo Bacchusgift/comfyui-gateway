@@ -56,7 +56,7 @@ def _mysql_insert(task_id: str, prompt_id: Optional[str], worker_id: Optional[st
         INSERT INTO task_history
             (task_id, prompt_id, worker_id, priority, status, progress,
              error_message, submitted_at, started_at, completed_at, result_json)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (task_id, prompt_id, worker_id, priority, status, progress,
               error_message, submitted_at, started_at, completed_at, json_dumps(result_json)))
 
@@ -297,5 +297,155 @@ def ensure_table() -> None:
     if use_mysql():
         try:
             _mysql_create_table()
-        except Exception:
-            pass
+            print("[task_history] MySQL 表已就绪")
+        except Exception as e:
+            print(f"[task_history] MySQL 表创建失败: {e}")
+
+
+def upsert_by_prompt_id(prompt_id: str, worker_id: str, priority: int = 0) -> str:
+    """
+    通过 prompt_id 创建或更新任务记录。
+    如果 prompt_id 对应的任务已存在，更新 worker_id；
+    如果不存在，创建新记录，task_id 使用 prompt_id。
+
+    返回 task_id。
+    """
+    try:
+        if use_mysql():
+            from app.db import execute
+            # 检查是否已存在
+            existing = _mysql_get_by_prompt_id(prompt_id)
+            if existing:
+                # 更新 worker_id
+                execute(
+                    "UPDATE task_history SET worker_id = %s WHERE task_id = %s",
+                    (worker_id, existing["task_id"])
+                )
+                return existing["task_id"]
+            else:
+                # 创建新记录，使用 prompt_id 作为 task_id
+                _mysql_insert(
+                    task_id=prompt_id,
+                    prompt_id=prompt_id,
+                    worker_id=worker_id,
+                    priority=priority,
+                    status="running",
+                    progress=0,
+                    started_at=datetime.now()
+                )
+                print(f"[task_history] 创建任务记录: {prompt_id}")
+                return prompt_id
+        else:
+            items = _redis_load()
+            # 查找是否已存在
+            for item in items:
+                if item.get("prompt_id") == prompt_id:
+                    item["worker_id"] = worker_id
+                    _redis_save(items)
+                    return item["task_id"]
+            # 创建新记录
+            record = {
+                "task_id": prompt_id,
+                "prompt_id": prompt_id,
+                "worker_id": worker_id,
+                "priority": priority,
+                "status": "running",
+                "progress": 0,
+                "error_message": None,
+                "submitted_at": datetime.now().isoformat(),
+                "started_at": datetime.now().isoformat(),
+                "completed_at": None,
+                "result_json": None
+            }
+            items.append(record)
+            _redis_save(items)
+            return prompt_id
+    except Exception as e:
+        print(f"[task_history] upsert_by_prompt_id 失败: {e}")
+        raise
+
+
+def sync_task_status(prompt_id: str, status: str, progress: int = None,
+                     worker_id: str = None, error_message: str = None,
+                     result_json: str = None) -> None:
+    """
+    同步任务状态（供列表查询时调用）。
+    如果任务不存在，创建新记录。
+    """
+    completed_at = datetime.now() if status in ("done", "failed") else None
+
+    if use_mysql():
+        from app.db import execute, fetchone
+        # 检查是否已存在
+        row = fetchone("SELECT task_id FROM task_history WHERE prompt_id = %s", (prompt_id,))
+        if row:
+            # 更新现有记录
+            sql = "UPDATE task_history SET status = %s"
+            params = [status]
+            if progress is not None:
+                sql += ", progress = %s"
+                params.append(progress)
+            if worker_id is not None:
+                sql += ", worker_id = %s"
+                params.append(worker_id)
+            if error_message is not None:
+                sql += ", error_message = %s"
+                params.append(error_message)
+            if result_json is not None:
+                sql += ", result_json = %s"
+                params.append(result_json)
+            if completed_at is not None:
+                sql += ", completed_at = %s"
+                params.append(completed_at)
+            sql += " WHERE prompt_id = %s"
+            params.append(prompt_id)
+            execute(sql, params)
+        else:
+            # 创建新记录
+            _mysql_insert(
+                task_id=prompt_id,
+                prompt_id=prompt_id,
+                worker_id=worker_id,
+                priority=0,
+                status=status,
+                progress=progress or 0,
+                error_message=error_message,
+                started_at=datetime.now() if status == "running" else None,
+                completed_at=completed_at,
+                result_json=result_json
+            )
+    else:
+        items = _redis_load()
+        found = False
+        for item in items:
+            if item.get("prompt_id") == prompt_id:
+                item["status"] = status
+                if progress is not None:
+                    item["progress"] = progress
+                if worker_id is not None:
+                    item["worker_id"] = worker_id
+                if error_message is not None:
+                    item["error_message"] = error_message
+                if result_json is not None:
+                    item["result_json"] = result_json
+                if completed_at is not None:
+                    item["completed_at"] = completed_at.isoformat()
+                found = True
+                break
+        if not found:
+            # 创建新记录
+            record = {
+                "task_id": prompt_id,
+                "prompt_id": prompt_id,
+                "worker_id": worker_id,
+                "priority": 0,
+                "status": status,
+                "progress": progress or 0,
+                "error_message": error_message,
+                "submitted_at": datetime.now().isoformat(),
+                "started_at": datetime.now().isoformat() if status == "running" else None,
+                "completed_at": completed_at.isoformat() if completed_at else None,
+                "result_json": result_json
+            }
+            items.append(record)
+        _redis_save(items)

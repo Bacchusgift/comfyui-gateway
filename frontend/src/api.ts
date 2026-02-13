@@ -94,7 +94,38 @@ export interface TaskStatus {
   history?: Record<string, unknown>;
 }
 
+export interface TaskItem {
+  task_id: string;
+  prompt_id: string | null;
+  worker_id: string | null;
+  priority: number;
+  status: "pending" | "submitted" | "running" | "done" | "failed";
+  progress: number;
+  error_message: string | null;
+  submitted_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+  result_json: string | null;
+}
+
+export interface TaskListResponse {
+  tasks: TaskItem[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 export const task = {
+  list: (params?: { limit?: number; offset?: number; worker_id?: string; status?: string }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.limit) searchParams.set("limit", String(params.limit));
+    if (params?.offset) searchParams.set("offset", String(params.offset));
+    if (params?.worker_id) searchParams.set("worker_id", params.worker_id);
+    if (params?.status) searchParams.set("status", params.status);
+    const query = searchParams.toString();
+    return request<TaskListResponse>(`/tasks${query ? `?${query}` : ""}`);
+  },
+  get: (taskId: string) => request<TaskItem>(`/tasks/${taskId}`),
   status: (promptId: string) => request<TaskStatus>(`/task/${promptId}/status`),
   history: (promptId: string) => request<Record<string, unknown>>(`/history/${promptId}`),
   gatewayStatus: (gatewayJobId: string) =>

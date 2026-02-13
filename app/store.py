@@ -8,6 +8,34 @@ from typing import Optional
 from app.config import REDIS_URL, use_mysql
 
 
+def ensure_tables() -> None:
+    """确保 MySQL 表存在（应用启动时调用）。"""
+    if not use_mysql():
+        return
+    from app.db import execute
+    try:
+        execute("""
+            CREATE TABLE IF NOT EXISTS task_worker (
+                prompt_id   VARCHAR(64)  NOT NULL PRIMARY KEY,
+                worker_id   VARCHAR(64)  NOT NULL,
+                created_at  DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+                INDEX idx_task_worker_worker (worker_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        """)
+        execute("""
+            CREATE TABLE IF NOT EXISTS gateway_job (
+                gateway_job_id VARCHAR(64)  NOT NULL PRIMARY KEY,
+                prompt_id      VARCHAR(64)  NOT NULL,
+                worker_id      VARCHAR(64)  NOT NULL,
+                created_at     DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+                INDEX idx_gateway_job_prompt (prompt_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        """)
+        print("[store] MySQL 表 task_worker, gateway_job 已就绪")
+    except Exception as e:
+        print(f"[store] MySQL 表创建失败: {e}")
+
+
 def _mysql_set_task_worker(prompt_id: str, worker_id: str) -> None:
     from app.db import execute
     execute(

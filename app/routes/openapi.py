@@ -12,6 +12,7 @@ from app.client import post_prompt, fetch_queue, get_history, parse_queue_counts
 from app import store
 from app import workers as wm
 from app.priority_queue import add_job, is_queued
+from app.task_history import upsert_by_prompt_id
 
 router = APIRouter(prefix="/openapi", tags=["openapi"])
 
@@ -45,7 +46,10 @@ async def submit_prompt(body: PromptBody):
         err = data.get("error") if isinstance(data, dict) else str(data)
         raise HTTPException(status_code=status, detail=err or "Worker request failed")
     if isinstance(data, dict) and "prompt_id" in data:
-        store.set_task_worker(data["prompt_id"], worker.worker_id)
+        prompt_id = data["prompt_id"]
+        store.set_task_worker(prompt_id, worker.worker_id)
+        # 记录任务历史
+        upsert_by_prompt_id(prompt_id, worker.worker_id, priority=body.priority or 0)
         wm.update_worker_load(worker.worker_id, worker.queue_running + 1, worker.queue_pending, healthy=True)
     return data
 
@@ -66,6 +70,7 @@ async def task_status(prompt_id: str):
 
     # 查 history
     hist, hist_status = await get_history(worker.url, prompt_id, auth=worker.auth())
+    print(f"[DEBUG] history response: status={hist_status}, has_prompt_id={prompt_id in (hist or {})}")
     if hist_status == 200 and isinstance(hist, dict) and prompt_id in hist:
         return {
             "prompt_id": prompt_id,
@@ -76,11 +81,16 @@ async def task_status(prompt_id: str):
 
     # 查 queue
     data = await fetch_queue(worker.url, auth=worker.auth())
+    print(f"[DEBUG] queue response: {data}")
     if not data:
         return {"prompt_id": prompt_id, "worker_id": worker_id, "status": "unknown", "progress": None}
 
+    running_ids = []
+    pending_ids = []
+
     for item in (data.get("queue_running") or []):
         pid = item[0] if isinstance(item, (list, tuple)) and len(item) > 0 else None
+        running_ids.append(pid)
         if pid == prompt_id:
             from app.client import get_progress
             progress, _ = await get_progress(worker.url, prompt_id, auth=worker.auth())
@@ -88,9 +98,11 @@ async def task_status(prompt_id: str):
 
     for item in (data.get("queue_pending") or []):
         pid = item[0] if isinstance(item, (list, tuple)) and len(item) > 0 else None
+        pending_ids.append(pid)
         if pid == prompt_id:
             return {"prompt_id": prompt_id, "worker_id": worker_id, "status": "queued", "progress": 0}
 
+    print(f"[DEBUG] prompt_id={prompt_id}, running_ids={running_ids}, pending_ids={pending_ids}")
     return {"prompt_id": prompt_id, "worker_id": worker_id, "status": "failed", "progress": None}
 
 

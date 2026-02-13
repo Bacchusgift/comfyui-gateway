@@ -13,7 +13,8 @@ from app.dispatcher import run_dispatcher
 from app.health import run_health_loop
 from app.progress_monitor import progress_monitor_loop
 from app.task_history import ensure_table
-from app.workflow_template import ensure_tables
+from app.workflow_template import ensure_tables as ensure_workflow_tables
+from app.store import ensure_tables as ensure_store_tables
 from app import apikeys
 
 
@@ -78,10 +79,36 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # 打印配置信息
+    from app.config import (
+        use_mysql, MYSQL_HOST, MYSQL_PORT, MYSQL_USER, MYSQL_DATABASE,
+        REDIS_URL, ADMIN_USERNAME, JWT_SECRET
+    )
+
+    print("\n" + "=" * 60)
+    print("ComfyUI Gateway 启动配置")
+    print("=" * 60)
+
+    if use_mysql():
+        print(f"存储方式: MySQL")
+        print(f"  - Host: {MYSQL_HOST}:{MYSQL_PORT}")
+        print(f"  - Database: {MYSQL_DATABASE}")
+        print(f"  - User: {MYSQL_USER}")
+    elif REDIS_URL:
+        print(f"存储方式: Redis")
+        print(f"  - URL: {REDIS_URL}")
+    else:
+        print(f"存储方式: 内存 (重启后数据丢失)")
+
+    print(f"管理员账户: {ADMIN_USERNAME}")
+    print(f"JWT 密钥: {'已配置' if JWT_SECRET != 'your-secret-key-change-in-production' else '使用默认值(不安全)'}")
+    print("=" * 60 + "\n")
+
     # 确保数据库表存在
-    ensure_table()
-    ensure_tables()
-    apikeys.ensure_table()
+    ensure_store_tables()  # task_worker, gateway_job
+    ensure_table()  # task_history
+    ensure_workflow_tables()  # workflow templates
+    apikeys.ensure_table()  # api_keys
     dispatch_task = asyncio.create_task(run_dispatcher(interval_seconds=1.0))
     health_task = asyncio.create_task(run_health_loop(interval_seconds=30.0))
     progress_task = asyncio.create_task(progress_monitor_loop(interval_seconds=2.0))

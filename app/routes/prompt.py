@@ -8,6 +8,7 @@ from app.client import post_prompt
 from app import store
 from app import workers as wm
 from app.priority_queue import add_job
+from app.task_history import upsert_by_prompt_id
 
 router = APIRouter(prefix="/prompt", tags=["prompt"])
 
@@ -39,7 +40,10 @@ async def submit_prompt(body: PromptBody):
         err = data.get("error") if isinstance(data, dict) else str(data)
         raise HTTPException(status_code=status, detail=err or "Worker request failed")
     if isinstance(data, dict) and "prompt_id" in data:
-        store.set_task_worker(data["prompt_id"], worker.worker_id)
+        prompt_id = data["prompt_id"]
+        store.set_task_worker(prompt_id, worker.worker_id)
+        # 记录任务历史
+        upsert_by_prompt_id(prompt_id, worker.worker_id, priority=body.priority or 0)
         # 立即更新 Worker 负载：running + 1
         wm.update_worker_load(worker.worker_id, worker.queue_running + 1, worker.queue_pending, healthy=True)
     return data
