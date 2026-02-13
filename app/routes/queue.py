@@ -215,12 +215,13 @@ async def task_status(prompt_id: str):
                 "progress": 0,
                 "message": "Waiting in queue",
             }
-    # 不在 queue 且 history 没有 -> 可能失败或已清理
+    # 任务映射存在但队列中找不到，说明刚提交或正在处理中
+    # 返回 submitted 而不是 failed，避免误判
     return {
         "prompt_id": prompt_id,
         "worker_id": worker_id,
         "worker_name": worker.name,
-        "status": "failed",
+        "status": "submitted",
         "progress": None,
-        "message": "Not in queue and no history (may have failed or been cleared)",
+        "message": "Task submitted, waiting to enter queue",
     }

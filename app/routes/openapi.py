@@ -58,7 +58,7 @@ async def submit_prompt(body: PromptBody):
 async def task_status(prompt_id: str):
     """
     GET /openapi/task/{prompt_id}/status
-    返回: prompt_id, worker_id, status (queued|running|done|failed), progress
+    返回: prompt_id, worker_id, status (submitted|queued|running|done|failed), progress
     """
     worker_id = store.get_task_worker(prompt_id)
     if not worker_id:
@@ -70,7 +70,6 @@ async def task_status(prompt_id: str):
 
     # 查 history
     hist, hist_status = await get_history(worker.url, prompt_id, auth=worker.auth())
-    print(f"[DEBUG] history response: status={hist_status}, has_prompt_id={prompt_id in (hist or {})}")
     if hist_status == 200 and isinstance(hist, dict) and prompt_id in hist:
         return {
             "prompt_id": prompt_id,
@@ -81,16 +80,12 @@ async def task_status(prompt_id: str):
 
     # 查 queue
     data = await fetch_queue(worker.url, auth=worker.auth())
-    print(f"[DEBUG] queue response: {data}")
     if not data:
-        return {"prompt_id": prompt_id, "worker_id": worker_id, "status": "unknown", "progress": None}
-
-    running_ids = []
-    pending_ids = []
+        # Worker 不可达，但任务映射存在，返回 submitted
+        return {"prompt_id": prompt_id, "worker_id": worker_id, "status": "submitted", "progress": None}
 
     for item in (data.get("queue_running") or []):
         pid = item[0] if isinstance(item, (list, tuple)) and len(item) > 0 else None
-        running_ids.append(pid)
         if pid == prompt_id:
             from app.client import get_progress
             progress, _ = await get_progress(worker.url, prompt_id, auth=worker.auth())
@@ -98,12 +93,12 @@ async def task_status(prompt_id: str):
 
     for item in (data.get("queue_pending") or []):
         pid = item[0] if isinstance(item, (list, tuple)) and len(item) > 0 else None
-        pending_ids.append(pid)
         if pid == prompt_id:
             return {"prompt_id": prompt_id, "worker_id": worker_id, "status": "queued", "progress": 0}
 
-    print(f"[DEBUG] prompt_id={prompt_id}, running_ids={running_ids}, pending_ids={pending_ids}")
-    return {"prompt_id": prompt_id, "worker_id": worker_id, "status": "failed", "progress": None}
+    # 任务映射存在但队列中找不到，说明刚提交或正在处理中
+    # 返回 submitted 而不是 failed，避免误判
+    return {"prompt_id": prompt_id, "worker_id": worker_id, "status": "submitted", "progress": None}
 
 
 @router.get("/task/gateway/{gateway_job_id}")
