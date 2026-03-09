@@ -13,6 +13,9 @@ services:
     environment:
       # compose 内 Redis：用服务名 redis 而非 localhost；.env 中可覆盖
       - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+    volumes:
+      # 挂载 NAS 盘用于存储模型文件
+      - ${NAS_PATH:-/data/spciyai}:/data/models
     depends_on:
       redis:
         condition: service_started
