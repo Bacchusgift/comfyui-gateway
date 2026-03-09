@@ -215,14 +215,14 @@ async def scan_models(model_type_id: Optional[int] = None) -> dict:
     """扫描模型目录并更新数据库。"""
     models_root = get_models_root()
     if not models_root:
-        return {"error": "未配置模型根目录"}
+        return {"error": "未配置模型根目录", "scanned": 0, "added": 0, "updated": 0, "errors": []}
 
     root_path = Path(models_root)
     if not root_path.exists():
-        return {"error": f"模型根目录不存在: {models_root}"}
+        return {"error": f"模型根目录不存在: {models_root}", "scanned": 0, "added": 0, "updated": 0, "errors": []}
 
     if not use_mysql():
-        return {"error": "需要 MySQL 支持"}
+        return {"error": "需要 MySQL 支持", "scanned": 0, "added": 0, "updated": 0, "errors": []}
 
     # 获取要扫描的模型类型
     if model_type_id:
@@ -230,11 +230,15 @@ async def scan_models(model_type_id: Optional[int] = None) -> dict:
     else:
         model_types = fetchall("SELECT * FROM model_types WHERE enabled = TRUE ORDER BY sort_order")
 
+    if not model_types:
+        return {"error": "未找到启用的模型类型", "scanned": 0, "added": 0, "updated": 0, "errors": []}
+
     stats = {"scanned": 0, "added": 0, "updated": 0, "errors": []}
 
     for mt in model_types:
         mt_dir = root_path / mt["directory"]
         if not mt_dir.exists():
+            stats["errors"].append(f"模型类型目录不存在: {mt['directory']}")
             continue
 
         extensions = json.loads(mt["file_extensions"]) if mt["file_extensions"] else []

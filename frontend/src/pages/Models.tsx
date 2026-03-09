@@ -89,7 +89,25 @@ export default function Models() {
     setScanning(true);
     try {
       const result = await models.scan();
-      alert(`扫描完成: 扫描 ${result.scanned} 个文件，新增 ${result.added}，更新 ${result.updated}`);
+
+      // 检查是否有错误
+      if ("error" in result) {
+        alert("扫描失败: " + result.error);
+        return;
+      }
+
+      // 显示扫描结果
+      const scanned = result.scanned ?? 0;
+      const added = result.added ?? 0;
+      const updated = result.updated ?? 0;
+      const errors = result.errors?.length || 0;
+
+      let message = `扫描完成: 扫描 ${scanned} 个文件，新增 ${added}，更新 ${updated}`;
+      if (errors > 0) {
+        message += `，${errors} 个错误`;
+      }
+      alert(message);
+
       loadModels();
       loadStats();
     } catch (e: unknown) {
