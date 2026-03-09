@@ -30,17 +30,38 @@ if ! docker compose version &>/dev/null; then
   COMPOSE_CMD="docker-compose"
 fi
 
-echo "构建并启动容器..."
-$COMPOSE_CMD build --no-cache
+# 生成版本号（时间戳格式：YYYYMMDDHHMM）
+VERSION=$(date +"%Y%m%d%H%M")
+IMAGE_NAME="comfyui-gateway"
+
+echo "=========================================="
+echo "构建版本: $VERSION"
+echo "镜像名称: $IMAGE_NAME"
+echo "=========================================="
+
+echo ""
+echo "构建镜像（latest + $VERSION）..."
+docker build -t $IMAGE_NAME:latest -t $IMAGE_NAME:$VERSION .
+
+echo ""
+echo "重新创建并启动容器..."
 $COMPOSE_CMD up -d --force-recreate
 
 PORT=${PORT:-8000}
 echo ""
-echo "部署完成。网关地址: http://localhost:$PORT"
-echo "管理页: http://localhost:$PORT"
-echo "API: http://localhost:$PORT/api/..."
+echo "=========================================="
+echo "部署完成"
+echo "=========================================="
+echo "网关地址:   http://localhost:$PORT"
+echo "管理页面:   http://localhost:$PORT"
+echo "API 地址:   http://localhost:$PORT/api/..."
+echo ""
+echo "镜像版本:"
+echo "  - $IMAGE_NAME:latest"
+echo "  - $IMAGE_NAME:$VERSION"
 echo ""
 echo "常用命令:"
-echo "  查看日志: $COMPOSE_CMD logs -f gateway"
-echo "  停止:     $COMPOSE_CMD down"
-echo "  重启:     $COMPOSE_CMD restart gateway"
+echo "  查看日志:   $COMPOSE_CMD logs -f gateway"
+echo "  停止服务:   $COMPOSE_CMD down"
+echo "  重启服务:   $COMPOSE_CMD restart gateway"
+echo "  查看镜像:   docker images $IMAGE_NAME"

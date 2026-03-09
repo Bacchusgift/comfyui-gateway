@@ -617,7 +617,12 @@ def delete_model(model_id: int, delete_file: bool = False) -> dict:
 def get_model_stats() -> dict:
     """获取模型统计信息。"""
     if not use_mysql():
-        return {}
+        return {
+            "by_type": [],
+            "total_count": 0,
+            "total_size": 0,
+            "downloads": {"total": 0, "pending": 0, "downloading": 0, "completed": 0, "failed": 0},
+        }
 
     # 按类型统计
     type_stats = fetchall("""

@@ -42,9 +42,10 @@ export default function Models() {
   const loadTypes = async () => {
     try {
       const data = await models.getTypes();
-      setTypes(data.types);
+      setTypes(data.types || []);
     } catch (e) {
       console.error("加载模型类型失败:", e);
+      setTypes([]);
     }
   };
 
@@ -56,9 +57,10 @@ export default function Models() {
         search: search || undefined,
         limit: 200,
       });
-      setModelList(data.models);
+      setModelList(data.models || []);
     } catch (e) {
       console.error("加载模型列表失败:", e);
+      setModelList([]);
     } finally {
       setLoading(false);
     }
@@ -76,9 +78,10 @@ export default function Models() {
   const loadDownloads = async () => {
     try {
       const data = await models.getDownloads();
-      setDownloads(data.downloads);
+      setDownloads(data.downloads || []);
     } catch (e) {
       console.error("加载下载任务失败:", e);
+      setDownloads([]);
     }
   };
 
@@ -180,19 +183,19 @@ export default function Models() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="bg-white p-4 rounded-lg border">
             <div className="text-sm text-gray-500">总模型数</div>
-            <div className="text-2xl font-bold">{stats.total_count}</div>
+            <div className="text-2xl font-bold">{stats.total_count || 0}</div>
           </div>
           <div className="bg-white p-4 rounded-lg border">
             <div className="text-sm text-gray-500">总大小</div>
-            <div className="text-2xl font-bold">{formatBytes(stats.total_size)}</div>
+            <div className="text-2xl font-bold">{formatBytes(stats.total_size || 0)}</div>
           </div>
           <div className="bg-white p-4 rounded-lg border">
             <div className="text-sm text-gray-500">模型类型</div>
-            <div className="text-2xl font-bold">{stats.by_type.length}</div>
+            <div className="text-2xl font-bold">{stats.by_type?.length || 0}</div>
           </div>
           <div className="bg-white p-4 rounded-lg border">
             <div className="text-sm text-gray-500">下载中</div>
-            <div className="text-2xl font-bold">{stats.downloads.downloading || 0}</div>
+            <div className="text-2xl font-bold">{stats.downloads?.downloading || 0}</div>
           </div>
         </div>
       )}
