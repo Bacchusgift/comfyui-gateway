@@ -1,13 +1,16 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
 import asyncio
+import traceback
 from fastapi import FastAPI, Request, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
+from fastapi.exceptions import RequestValidationError
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.routes import workers, prompt, history, queue, view, settings, task_history, workflows, auth, openapi, output
+from app.routes import workers, prompt, history, queue, view, settings, task_history, workflows, auth, openapi, output, models
 from app.routes.auth import _verify_token
 from app.dispatcher import run_dispatcher
 from app.health import run_health_loop
@@ -17,6 +20,32 @@ from app.task_history import ensure_table
 from app.workflow_template import ensure_tables as ensure_workflow_tables
 from app.store import ensure_tables as ensure_store_tables
 from app import apikeys
+
+
+class DebugMiddleware(BaseHTTPMiddleware):
+    """调试中间件：记录请求详情"""
+
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+
+        # 只记录 openapi/prompt 请求
+        if path == "/openapi/prompt" and request.method == "POST":
+            content_type = request.headers.get("content-type", "")
+            content_length = request.headers.get("content-length", "")
+            print(f"[debug] POST /openapi/prompt")
+            print(f"[debug] Content-Type: {content_type}")
+            print(f"[debug] Content-Length: {content_length}")
+
+            # 尝试读取 body
+            try:
+                body = await request.body()
+                print(f"[debug] Body 长度: {len(body)}")
+                if len(body) < 500:
+                    print(f"[debug] Body 内容: {body[:500]}")
+            except Exception as e:
+                print(f"[debug] 读取 Body 失败: {e}")
+
+        return await call_next(request)
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -110,6 +139,8 @@ async def lifespan(app: FastAPI):
     ensure_table()  # task_history
     ensure_workflow_tables()  # workflow templates
     apikeys.ensure_table()  # api_keys
+    from app.model_manager import ensure_tables as ensure_model_tables
+    ensure_model_tables()  # model manager tables
 
     # 连接所有 Worker 的 WebSocket（用于实时进度）
     await connect_all_workers()
@@ -136,8 +167,44 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# 添加认证中间件（注意顺序：先 CORS，后 Auth）
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """捕获 Pydantic 验证错误并返回详细信息"""
+    print(f"[validation_error] 请求验证失败: {request.url.path}")
+    print(f"[validation_error] 错误详情: {exc.errors()}")
+    return JSONResponse(
+        status_code=422,
+        content={"detail": exc.errors(), "body": exc.body},
+    )
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    """捕获 HTTP 异常并记录日志"""
+    print(f"[http_error] HTTP {exc.status_code}: {request.url.path} - {exc.detail}")
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+    )
+
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request: Request, exc: Exception):
+    """捕获所有未处理的异常"""
+    print(f"[unhandled_error] 未处理的异常: {request.url.path}")
+    print(f"[unhandled_error] 异常类型: {type(exc).__name__}")
+    print(f"[unhandled_error] 异常信息: {exc}")
+    traceback.print_exc()
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Internal server error: {type(exc).__name__}: {exc}"},
+    )
+
+
+# 添加中间件（注意顺序：后添加的先执行）
 app.add_middleware(AuthMiddleware)
+app.add_middleware(DebugMiddleware)  # 调试中间件
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -157,6 +224,7 @@ app.include_router(settings.router, prefix="/api")
 app.include_router(task_history.router, prefix="/api")
 app.include_router(workflows.router, prefix="/api")
 app.include_router(output.router, prefix="/api")
+app.include_router(models.router, prefix="/api")
 
 # OpenAPI (外部系统使用，只需 X-API-Key)
 app.include_router(openapi.router)

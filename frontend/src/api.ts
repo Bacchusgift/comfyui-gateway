@@ -291,3 +291,143 @@ export const workflows = {
   // API 文档
   getApiDocs: (id: string) => request<WorkflowApiDocs>(`/workflows/${id}/api-docs`),
 };
+
+// ==================== Models ====================
+
+export interface ModelType {
+  id: number;
+  type_name: string;
+  display_name: string;
+  directory: string;
+  file_extensions: string[];
+  icon: string | null;
+  sort_order: number;
+  enabled: boolean;
+}
+
+export interface ModelItem {
+  id: number;
+  model_type_id: number;
+  filename: string;
+  file_path: string;
+  file_size: number;
+  civitai_model_id: string | null;
+  civitai_version_id: string | null;
+  civitai_model_name: string | null;
+  civitai_preview_url: string | null;
+  civitai_base_model: string | null;
+  is_scanned: boolean;
+  model_type_name?: string;
+  type_name?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ModelSettings {
+  comfyui_models_root: string | null;
+  civitai_api_token: string | null;
+  civitai_has_token: boolean;
+}
+
+export interface DownloadTask {
+  id: number;
+  download_id: string;
+  model_type_id: number;
+  civitai_version_id: string;
+  download_url: string;
+  filename: string;
+  status: "pending" | "downloading" | "completed" | "failed" | "cancelled";
+  progress: number;
+  bytes_downloaded: number;
+  total_bytes: number;
+  error_message: string | null;
+  result_model_id: number | null;
+  created_at: string;
+  completed_at: string | null;
+  model_type_name?: string;
+}
+
+export interface CivitaiVersion {
+  version_id: string;
+  version_name: string;
+  model_id: string;
+  model_name: string;
+  model_type: string;
+  base_model: string;
+  download_url: string;
+  files: Array<{
+    name: string;
+    size_kb: number;
+    type: string;
+    download_url: string;
+  }>;
+  images: Array<{
+    url: string;
+    nsfw: boolean;
+  }>;
+}
+
+export interface ModelStats {
+  by_type: Array<{
+    display_name: string;
+    type_name: string;
+    count: number;
+    total_size: number;
+  }>;
+  total_count: number;
+  total_size: number;
+  downloads: {
+    total: number;
+    pending: number;
+    downloading: number;
+    completed: number;
+    failed: number;
+  };
+}
+
+export const models = {
+  // 设置
+  getSettings: () => request<ModelSettings>("/models/settings"),
+  updateSettings: (body: { comfyui_models_root?: string; civitai_api_token?: string }) =>
+    request<ModelSettings>("/models/settings", { method: "PATCH", body: JSON.stringify(body) }),
+
+  // 模型类型
+  getTypes: () => request<{ types: ModelType[] }>("/models/types"),
+
+  // 模型列表
+  list: (params?: { model_type_id?: number; search?: string; limit?: number; offset?: number }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.model_type_id) searchParams.set("model_type_id", String(params.model_type_id));
+    if (params?.search) searchParams.set("search", params.search);
+    if (params?.limit) searchParams.set("limit", String(params.limit));
+    if (params?.offset) searchParams.set("offset", String(params.offset));
+    const query = searchParams.toString();
+    return request<{ models: ModelItem[]; total: number }>(`/models${query ? `?${query}` : ""}`);
+  },
+
+  // 扫描
+  scan: (modelTypeId?: number) =>
+    request<{ scanned: number; added: number; updated: number; errors: string[] }>(
+      `/models/scan`,
+      { method: "POST", body: JSON.stringify({ model_type_id: modelTypeId }) }
+    ),
+
+  // 统计
+  getStats: () => request<ModelStats>("/models/stats"),
+
+  // 删除
+  delete: (modelId: number, deleteFile = false) =>
+    request<{ message: string }>(`/models/${modelId}?delete_file=${deleteFile}`, { method: "DELETE" }),
+
+  // Civitai
+  getCivitaiVersion: (versionId: string) =>
+    request<CivitaiVersion>(`/models/civitai/versions/${versionId}`),
+
+  // 下载
+  getDownloads: () => request<{ downloads: DownloadTask[] }>("/models/downloads"),
+  createDownload: (body: { civitai_version_id: string; model_type_id: number; filename?: string }) =>
+    request<DownloadTask>("/models/downloads", { method: "POST", body: JSON.stringify(body) }),
+  getDownload: (downloadId: string) => request<DownloadTask>(`/models/downloads/${downloadId}`),
+  cancelDownload: (downloadId: string) =>
+    request<{ message: string }>(`/models/downloads/${downloadId}`, { method: "DELETE" }),
+};

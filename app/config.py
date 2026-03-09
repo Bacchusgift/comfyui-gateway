@@ -33,6 +33,12 @@ ADMIN_PASSWORD: str = env("ADMIN_PASSWORD") or "admin123"
 JWT_SECRET: str = env("JWT_SECRET") or "your-secret-key-change-in-production"
 JWT_EXPIRE_HOURS: int = int(env("JWT_EXPIRE_HOURS") or "24")
 
+# ComfyUI 模型根目录（用于模型管理器）
+COMFYUI_MODELS_ROOT: Optional[str] = env("COMFYUI_MODELS_ROOT")
+
+# Civitai API Token（用于下载模型）
+CIVITAI_API_TOKEN: Optional[str] = env("CIVITAI_API_TOKEN")
+
 def use_mysql() -> bool:
     """是否启用 MySQL（配置了 MYSQL_DATABASE 时启用）。"""
     return bool(env("MYSQL_DATABASE"))
