@@ -48,9 +48,9 @@ export interface WorkerItem {
 
 export const workers = {
   list: () => request<{ workers: WorkerItem[] }>("/workers"),
-  create: (body: { url: string; name?: string; weight?: number; auth_username?: string; auth_password?: string }) =>
+  create: (body: { url: string; name?: string; weight?: number; is_gray?: boolean; auth_username?: string; auth_password?: string }) =>
     request<WorkerItem>("/workers", { method: "POST", body: JSON.stringify(body) }),
-  update: (id: string, body: { name?: string; weight?: number; enabled?: boolean; auth_username?: string; auth_password?: string }) =>
+  update: (id: string, body: { name?: string; weight?: number; enabled?: boolean; is_gray?: boolean; auth_username?: string; auth_password?: string }) =>
     request<WorkerItem>(`/workers/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   delete: (id: string) => request<{ ok: boolean }>(`/workers/${id}`, { method: "DELETE" }),
 };
