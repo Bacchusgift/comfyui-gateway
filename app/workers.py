@@ -18,6 +18,7 @@ class WorkerInfo:
     name: Optional[str] = None
     weight: int = 1
     enabled: bool = True
+    is_gray: bool = False  # 灰度节点标记
     # 反向代理（如 nginx）Basic 认证：填后网关请求该 Worker 时会带 Authorization 头
     auth_username: Optional[str] = None
     auth_password: Optional[str] = None
@@ -57,7 +58,7 @@ def _load_workers_from_mysql() -> None:
     if not use_mysql():
         return
     from app.db import fetchall
-    rows = fetchall("SELECT worker_id, url, name, weight, enabled, auth_username, auth_password FROM workers")
+    rows = fetchall("SELECT worker_id, url, name, weight, enabled, is_gray, auth_username, auth_password FROM workers")
     for r in rows:
         if not r:
             continue
@@ -67,6 +68,7 @@ def _load_workers_from_mysql() -> None:
             name=r.get("name"),
             weight=int(r.get("weight") or 1),
             enabled=bool(r.get("enabled", True)),
+            is_gray=bool(r.get("is_gray", False)),
             auth_username=r.get("auth_username"),
             auth_password=r.get("auth_password"),
         )
@@ -93,6 +95,7 @@ def _load_workers_from_redis() -> None:
                 name=w.get("name"),
                 weight=w.get("weight", 1),
                 enabled=w.get("enabled", True),
+                is_gray=w.get("is_gray", False),
                 auth_username=w.get("auth_username"),
                 auth_password=w.get("auth_password"),
             )
@@ -105,18 +108,18 @@ def _persist_worker(w: WorkerInfo) -> None:
     if use_mysql():
         from app.db import execute
         execute(
-            """INSERT INTO workers (worker_id, url, name, weight, enabled, auth_username, auth_password)
-               VALUES (%s, %s, %s, %s, %s, %s, %s)
-               ON DUPLICATE KEY UPDATE url=%s, name=%s, weight=%s, enabled=%s, auth_username=%s, auth_password=%s""",
-            (w.worker_id, w.url, w.name, w.weight, 1 if w.enabled else 0, w.auth_username, w.auth_password,
-             w.url, w.name, w.weight, 1 if w.enabled else 0, w.auth_username, w.auth_password),
+            """INSERT INTO workers (worker_id, url, name, weight, enabled, is_gray, auth_username, auth_password)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+               ON DUPLICATE KEY UPDATE url=%s, name=%s, weight=%s, enabled=%s, is_gray=%s, auth_username=%s, auth_password=%s""",
+            (w.worker_id, w.url, w.name, w.weight, 1 if w.enabled else 0, 1 if w.is_gray else 0, w.auth_username, w.auth_password,
+             w.url, w.name, w.weight, 1 if w.enabled else 0, 1 if w.is_gray else 0, w.auth_username, w.auth_password),
         )
     try:
         r = _redis()
         if r:
             import json
             arr = [{"worker_id": x.worker_id, "url": x.url, "name": x.name, "weight": x.weight, "enabled": x.enabled,
-                    "auth_username": x.auth_username, "auth_password": x.auth_password} for x in _workers.values()]
+                    "is_gray": x.is_gray, "auth_username": x.auth_username, "auth_password": x.auth_password} for x in _workers.values()]
             r.set(_WORKERS_KEY, json.dumps(arr))
     except Exception:
         pass  # Redis 不可用时降级为仅内存
@@ -131,7 +134,7 @@ def _delete_worker_persist(worker_id: str) -> None:
         if r:
             import json
             arr = [{"worker_id": x.worker_id, "url": x.url, "name": x.name, "weight": x.weight, "enabled": x.enabled,
-                    "auth_username": x.auth_username, "auth_password": x.auth_password} for x in _workers.values()]
+                    "is_gray": x.is_gray, "auth_username": x.auth_username, "auth_password": x.auth_password} for x in _workers.values()]
             r.set(_WORKERS_KEY, json.dumps(arr))
     except Exception:
         pass
@@ -159,6 +162,7 @@ def add_worker(
     url: str,
     name: Optional[str] = None,
     weight: int = 1,
+    is_gray: bool = False,
     auth_username: Optional[str] = None,
     auth_password: Optional[str] = None,
 ) -> WorkerInfo:
@@ -169,6 +173,7 @@ def add_worker(
         url=url,
         name=name or url,
         weight=weight,
+        is_gray=is_gray,
         auth_username=auth_username,
         auth_password=auth_password,
     )
@@ -182,6 +187,7 @@ def update_worker(
     name: Optional[str] = None,
     weight: Optional[int] = None,
     enabled: Optional[bool] = None,
+    is_gray: Optional[bool] = None,
     auth_username: Optional[str] = None,
     auth_password: Optional[str] = None,
 ) -> Optional[WorkerInfo]:
@@ -194,6 +200,8 @@ def update_worker(
         w.weight = weight
     if enabled is not None:
         w.enabled = enabled
+    if is_gray is not None:
+        w.is_gray = is_gray
     if auth_username is not None:
         w.auth_username = auth_username
     if auth_password is not None:

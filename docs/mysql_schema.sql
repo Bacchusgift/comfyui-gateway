@@ -8,11 +8,13 @@ CREATE TABLE IF NOT EXISTS workers (
     name        VARCHAR(256) DEFAULT NULL,
     weight      INT          NOT NULL DEFAULT 1,
     enabled     TINYINT(1)   NOT NULL DEFAULT 1,
+    is_gray     TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '灰度节点标记',
     auth_username VARCHAR(256) DEFAULT NULL,
     auth_password VARCHAR(512) DEFAULT NULL,
     created_at  DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     updated_at  DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
-    INDEX idx_workers_enabled (enabled)
+    INDEX idx_workers_enabled (enabled),
+    INDEX idx_workers_gray (is_gray)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 2. 任务与 Worker 映射（prompt_id -> worker_id）

@@ -73,14 +73,55 @@ def _select_by_load(candidates: List[WorkerInfo], realtime_data: dict) -> Option
 
 async def select_worker() -> Optional[WorkerInfo]:
     """
-    实时选择 Worker 的策略：
-    1. 对所有 enabled Worker 并发调用 /queue 获取真实负载
+    实时选择 Worker 的策略（仅选择非灰度节点）：
+    1. 对所有 enabled 且非灰度的 Worker 并发调用 /queue 获取真实负载
     2. 优先选择完全空闲（running == 0）的 Worker
     3. 若没有空闲 Worker，选择负载最小的
 
     不信任缓存，每次都实时获取。
     """
-    candidates = [w for w in wm.list_workers() if w.enabled]
+    candidates = [w for w in wm.list_workers() if w.enabled and not w.is_gray]
+    if not candidates:
+        return None
+
+    # 并发获取所有 Worker 的真实负载
+    import asyncio
+    tasks = [_get_real_time_load(w) for w in candidates]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    # 构建实时负载数据
+    realtime_data = {}
+    for i, w in enumerate(candidates):
+        if i < len(results) and not isinstance(results[i], Exception):
+            running, pending, healthy = results[i]
+            realtime_data[w.worker_id] = (running, pending, healthy)
+            # 更新缓存（供 UI 使用）
+            wm.update_worker_load(w.worker_id, running, pending, healthy=healthy)
+
+    # 过滤出健康的 Worker
+    healthy_workers = [w for w in candidates if w.worker_id in realtime_data and realtime_data[w.worker_id][2]]
+    if not healthy_workers:
+        return None
+
+    # 第一步：优先选择完全空闲的 Worker
+    idle = _select_idle_worker(healthy_workers, realtime_data)
+    if idle:
+        return idle
+
+    # 第二步：没有空闲 Worker，按负载选择
+    return _select_by_load(healthy_workers, realtime_data)
+
+
+async def select_gray_worker() -> Optional[WorkerInfo]:
+    """
+    实时选择灰度 Worker 的策略（仅选择灰度节点）：
+    1. 对所有 enabled 且为灰度的 Worker 并发调用 /queue 获取真实负载
+    2. 优先选择完全空闲（running == 0）的 Worker
+    3. 若没有空闲 Worker，选择负载最小的
+
+    不信任缓存，每次都实时获取。
+    """
+    candidates = [w for w in wm.list_workers() if w.enabled and w.is_gray]
     if not candidates:
         return None
 

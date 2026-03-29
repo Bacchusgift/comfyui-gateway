@@ -12,6 +12,7 @@ class CreateWorkerBody(BaseModel):
     url: str
     name: Optional[str] = None
     weight: int = 1
+    is_gray: bool = False  # 灰度节点标记
     auth_username: Optional[str] = None
     auth_password: Optional[str] = None
     skip_health_check: bool = False  # 跳过注册时的联通检测（调试用）
@@ -20,6 +21,7 @@ class UpdateWorkerBody(BaseModel):
     name: Optional[str] = None
     weight: Optional[int] = None
     enabled: Optional[bool] = None
+    is_gray: Optional[bool] = None  # 灰度节点标记
     auth_username: Optional[str] = None
     auth_password: Optional[str] = None
 
@@ -44,6 +46,7 @@ async def list_workers():
             "name": w.name,
             "weight": w.weight,
             "enabled": w.enabled,
+            "is_gray": w.is_gray,
             "healthy": w.healthy,
             "queue_running": w.queue_running,
             "queue_pending": w.queue_pending,
@@ -73,6 +76,7 @@ async def create_worker(body: CreateWorkerBody):
         url=url,
         name=body.name,
         weight=body.weight,
+        is_gray=body.is_gray,
         auth_username=body.auth_username,
         auth_password=body.auth_password,
     )
@@ -82,6 +86,7 @@ async def create_worker(body: CreateWorkerBody):
         "name": w.name,
         "weight": w.weight,
         "enabled": w.enabled,
+        "is_gray": w.is_gray,
         "healthy": True,
         "auth_username": w.auth_username,
         "auth_has_password": bool(w.auth_password),
@@ -105,12 +110,13 @@ async def check_worker_health(worker_id: str):
 
 @router.patch("/{worker_id}")
 def update_worker(worker_id: str, body: UpdateWorkerBody):
-    """PATCH /api/workers/{id} - 更新 name / weight / enabled / auth"""
+    """PATCH /api/workers/{id} - 更新 name / weight / enabled / is_gray / auth"""
     w = wm.update_worker(
         worker_id,
         name=body.name,
         weight=body.weight,
         enabled=body.enabled,
+        is_gray=body.is_gray,
         auth_username=body.auth_username,
         auth_password=body.auth_password,
     )
@@ -122,6 +128,7 @@ def update_worker(worker_id: str, body: UpdateWorkerBody):
         "name": w.name,
         "weight": w.weight,
         "enabled": w.enabled,
+        "is_gray": w.is_gray,
         "auth_username": w.auth_username,
         "auth_has_password": bool(w.auth_password),
     }

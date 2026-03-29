@@ -38,6 +38,7 @@ export interface WorkerItem {
   name: string | null;
   weight: number;
   enabled: boolean;
+  is_gray: boolean;
   healthy: boolean;
   queue_running: number;
   queue_pending: number;

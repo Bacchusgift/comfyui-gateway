@@ -5,9 +5,9 @@ import { useConfirm } from "../hooks/useConfirm";
 
 export default function Workers() {
   const [list, setList] = useState<WorkerItem[]>([]);
-  const [form, setForm] = useState({ url: "", name: "", weight: 1, auth_username: "", auth_password: "" });
+  const [form, setForm] = useState({ url: "", name: "", weight: 1, is_gray: false, auth_username: "", auth_password: "" });
   const [editing, setEditing] = useState<WorkerItem | null>(null);
-  const [editForm, setEditForm] = useState({ name: "", weight: 1, enabled: true, auth_username: "", auth_password: "" });
+  const [editForm, setEditForm] = useState({ name: "", weight: 1, enabled: true, is_gray: false, auth_username: "", auth_password: "" });
   const { error } = useToast();
   const { confirm, dialog: confirmDialog } = useConfirm();
 
@@ -25,11 +25,12 @@ export default function Workers() {
         url: form.url.trim(),
         name: form.name.trim() || undefined,
         weight: form.weight,
+        is_gray: form.is_gray,
         auth_username: form.auth_username.trim() || undefined,
         auth_password: form.auth_password || undefined,
       })
       .then(() => {
-        setForm({ url: "", name: "", weight: 1, auth_username: "", auth_password: "" });
+        setForm({ url: "", name: "", weight: 1, is_gray: false, auth_username: "", auth_password: "" });
         load();
       })
       .catch((e) => error(e.message));
@@ -37,15 +38,16 @@ export default function Workers() {
 
   const handleUpdate = (w: WorkerItem) => {
     setEditing(w);
-    setEditForm({ name: w.name || "", weight: w.weight, enabled: w.enabled, auth_username: w.auth_username || "", auth_password: "" });
+    setEditForm({ name: w.name || "", weight: w.weight, enabled: w.enabled, is_gray: w.is_gray, auth_username: w.auth_username || "", auth_password: "" });
   };
 
   const saveEdit = () => {
     if (!editing) return;
-    const body: { name?: string; weight?: number; enabled?: boolean; auth_username?: string; auth_password?: string } = {
+    const body: { name?: string; weight?: number; enabled?: boolean; is_gray?: boolean; auth_username?: string; auth_password?: string } = {
       name: editForm.name || undefined,
       weight: editForm.weight,
       enabled: editForm.enabled,
+      is_gray: editForm.is_gray,
       auth_username: editForm.auth_username.trim() || undefined,
     };
     if (editForm.auth_password) body.auth_password = editForm.auth_password;
@@ -107,6 +109,15 @@ export default function Workers() {
           />
         </div>
         <div>
+          <label className="block text-sm text-gray-600 mb-1">灰度节点</label>
+          <input
+            type="checkbox"
+            checked={form.is_gray}
+            onChange={(e) => setForm((f) => ({ ...f, is_gray: e.target.checked }))}
+            className="h-5 w-5 text-blue-600"
+          />
+        </div>
+        <div>
           <label className="block text-sm text-gray-600 mb-1">认证用户名</label>
           <input
             type="text"
@@ -140,6 +151,7 @@ export default function Workers() {
               <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">状态</th>
               <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">队列</th>
               <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">权重</th>
+              <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">灰度</th>
               <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">启用</th>
               <th className="px-4 py-2 text-right text-sm font-medium text-gray-700">操作</th>
             </tr>
@@ -155,6 +167,9 @@ export default function Workers() {
                 </td>
                 <td className="px-4 py-2 text-sm">运行 {w.queue_running} / 等待 {w.queue_pending}</td>
                 <td className="px-4 py-2 text-sm">{w.weight}</td>
+                <td className="px-4 py-2">
+                  {w.is_gray && <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-orange-100 text-orange-800">灰度</span>}
+                </td>
                 <td className="px-4 py-2 text-sm">{w.enabled ? "是" : "否"}</td>
                 <td className="px-4 py-2 text-right">
                   <button onClick={() => handleUpdate(w)} className="text-blue-600 hover:underline mr-2">编辑</button>
@@ -201,6 +216,15 @@ export default function Workers() {
                   onChange={(e) => setEditForm((f) => ({ ...f, enabled: e.target.checked }))}
                 />
                 <label htmlFor="enabled">启用</label>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="is_gray"
+                  checked={editForm.is_gray}
+                  onChange={(e) => setEditForm((f) => ({ ...f, is_gray: e.target.checked }))}
+                />
+                <label htmlFor="is_gray">灰度节点</label>
               </div>
               <div>
                 <label className="block text-sm text-gray-600">认证用户名</label>

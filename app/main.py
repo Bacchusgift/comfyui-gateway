@@ -228,6 +228,8 @@ app.include_router(models.router, prefix="/api")
 
 # OpenAPI (外部系统使用，只需 X-API-Key)
 app.include_router(openapi.router)
+# 灰度 API (路由到灰度节点)
+app.include_router(openapi.gray_router, prefix="/openapi")
 
 # 前端静态文件目录
 _frontend = Path(__file__).resolve().parent.parent / "frontend" / "dist"
