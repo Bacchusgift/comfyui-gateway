@@ -10,7 +10,7 @@ from fastapi.exceptions import RequestValidationError
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.routes import workers, prompt, history, queue, view, settings, task_history, workflows, auth, openapi, output, models
+from app.routes import workers, prompt, history, queue, view, settings, task_history, workflows, auth, openapi, output, models, loras
 from app.routes.auth import _verify_token
 from app.dispatcher import run_dispatcher
 from app.health import run_health_loop
@@ -141,6 +141,8 @@ async def lifespan(app: FastAPI):
     apikeys.ensure_table()  # api_keys
     from app.model_manager import ensure_tables as ensure_model_tables
     ensure_model_tables()  # model manager tables
+    from app.lora_manager import ensure_tables as ensure_lora_tables
+    ensure_lora_tables()  # lora manager tables
 
     # 连接所有 Worker 的 WebSocket（用于实时进度）
     await connect_all_workers()
@@ -225,6 +227,7 @@ app.include_router(task_history.router, prefix="/api")
 app.include_router(workflows.router, prefix="/api")
 app.include_router(output.router, prefix="/api")
 app.include_router(models.router, prefix="/api")
+app.include_router(loras.router, prefix="/api")
 
 # OpenAPI (外部系统使用，只需 X-API-Key)
 app.include_router(openapi.router)

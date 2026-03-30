@@ -15,6 +15,8 @@ import WorkflowApiDocs from "./pages/WorkflowApiDocs";
 import WorkflowExecutions from "./pages/WorkflowExecutions";
 import ApiKeys from "./pages/ApiKeys";
 import Models from "./pages/Models";
+import Loras from "./pages/Loras";
+import LoraMatchTest from "./pages/LoraMatchTest";
 
 export default function App() {
   return (
@@ -34,6 +36,8 @@ export default function App() {
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/apikeys" element={<ApiKeys />} />
                 <Route path="/models" element={<Models />} />
+                <Route path="/loras" element={<Loras />} />
+                <Route path="/loras/test" element={<LoraMatchTest />} />
                 <Route path="/workflows" element={<Workflows />} />
                 <Route path="/workflows/new" element={<WorkflowEditor />} />
                 <Route path="/workflows/:id/edit" element={<WorkflowEditor />} />

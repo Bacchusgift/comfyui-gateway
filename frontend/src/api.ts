@@ -432,3 +432,158 @@ export const models = {
   cancelDownload: (downloadId: string) =>
     request<{ message: string }>(`/models/downloads/${downloadId}`, { method: "DELETE" }),
 };
+
+// ==================== LoRAs ====================
+
+export interface LoraItem {
+  id: number;
+  lora_name: string;
+  display_name: string | null;
+  description: string | null;
+  priority: number;
+  enabled: boolean;
+  file_size: number;
+  keyword_count: number;
+  base_model_count: number;
+  trigger_word_count: number;
+  civitai_model_id: string | null;
+  civitai_version_id: string | null;
+  civitai_preview_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LoraKeyword {
+  id: number;
+  lora_id: number;
+  keyword: string;
+  weight: number;
+  created_at: string;
+}
+
+export interface LoraBaseModel {
+  id: number;
+  lora_id: number;
+  base_model_name: string | null;
+  base_model_filename: string | null;
+  compatible: boolean;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface LoraTriggerWord {
+  id: number;
+  lora_id: number;
+  trigger_word: string;
+  weight: number;
+  is_negative: boolean;
+  created_at: string;
+}
+
+export interface MatchLorasRequest {
+  user_prompt: string;
+  base_model?: string;
+  checkpoint?: string;
+  limit?: number;
+  min_score?: number;
+}
+
+export interface MatchedLoraInfo {
+  lora_id: number;
+  lora_name: string;
+  display_name: string | null;
+  description: string | null;
+  trigger_words: string[];
+  trigger_weights: number[];
+  matched_keywords: string[];
+  match_score: number;
+  base_model: string;
+  priority: number;
+  file_size: number;
+  civitai_preview_url: string | null;
+}
+
+export const loras = {
+  // 列表和 CRUD
+  list: (params?: { enabled_only?: boolean; search?: string; limit?: number; offset?: number }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.enabled_only) searchParams.set("enabled_only", "true");
+    if (params?.search) searchParams.set("search", params.search);
+    if (params?.limit) searchParams.set("limit", String(params.limit));
+    if (params?.offset) searchParams.set("offset", String(params.offset));
+    const query = searchParams.toString();
+    return request<{ loras: LoraItem[]; total: number }>(`/loras${query ? `?${query}` : ""}`);
+  },
+
+  create: (data: {
+    lora_name: string;
+    display_name?: string;
+    description?: string;
+    priority?: number;
+    enabled?: boolean;
+    file_size?: number;
+    civitai_model_id?: string;
+    civitai_version_id?: string;
+    civitai_preview_url?: string;
+  }) => request<LoraItem>("/loras", { method: "POST", body: JSON.stringify(data) }),
+
+  get: (id: number) => request<LoraItem>(`/loras/${id}`),
+
+  update: (id: number, data: Partial<LoraItem>) =>
+    request<LoraItem>(`/loras/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+
+  delete: (id: number) => request<{ message: string }>(`/loras/${id}`, { method: "DELETE" }),
+
+  // 关键词管理
+  getKeywords: (id: number) => request<{ keywords: LoraKeyword[] }>(`/loras/${id}/keywords`),
+
+  addKeyword: (id: number, data: { keyword: string; weight?: number }) =>
+    request<{ keywords: LoraKeyword[] }>(`/loras/${id}/keywords`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  deleteKeyword: (id: number, keywordId: number) =>
+    request<{ message: string }>(`/loras/${id}/keywords/${keywordId}`, { method: "DELETE" }),
+
+  // 基模关联管理
+  getBaseModels: (id: number) => request<{ base_models: LoraBaseModel[] }>(`/loras/${id}/base-models`),
+
+  addBaseModel: (id: number, data: {
+    base_model_name?: string;
+    base_model_filename?: string;
+    compatible?: boolean;
+    notes?: string;
+  }) =>
+    request<{ base_models: LoraBaseModel[] }>(`/loras/${id}/base-models`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  deleteBaseModel: (id: number, assocId: number) =>
+    request<{ message: string }>(`/loras/${id}/base-models/${assocId}`, { method: "DELETE" }),
+
+  // 触发词管理
+  getTriggerWords: (id: number) => request<{ trigger_words: LoraTriggerWord[] }>(`/loras/${id}/trigger-words`),
+
+  addTriggerWord: (id: number, data: { trigger_word: string; weight?: number; is_negative?: boolean }) =>
+    request<{ trigger_words: LoraTriggerWord[] }>(`/loras/${id}/trigger-words`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  deleteTriggerWord: (id: number, twId: number) =>
+    request<{ message: string }>(`/loras/${id}/trigger-words/${twId}`, { method: "DELETE" }),
+
+  // 匹配 API（使用 openapi 前缀，不需要认证）
+  match: (data: MatchLorasRequest) =>
+    request<{
+      matched_loras: MatchedLoraInfo[];
+      total_count: number;
+      execution_time_ms: number;
+    }>("/openapi/loras/match", {
+      method: "POST",
+      body: JSON.stringify(data),
+      headers: { "X-API-Key": localStorage.getItem("api_key") || "" },
+    }),
+};

@@ -407,6 +407,60 @@ async def proxy_view(
         raise HTTPException(status_code=502, detail=str(e))
 
 
+# ==================== LoRA 匹配 API ====================
+
+class MatchLorasRequest(BaseModel):
+    user_prompt: str  # 用户提示词
+    base_model: Optional[str] = None  # 基模名称（如 "SD 1.5", "SDXL"）
+    checkpoint: Optional[str] = None  # 基模文件名（如 "v1-5-pruned.safetensors"）
+    limit: int = 10  # 返回数量限制
+    min_score: float = 0.0  # 最低匹配分数
+
+
+@router.post("/loras/match")
+async def match_loras_endpoint(request: MatchLorasRequest):
+    """
+    POST /openapi/loras/match - 匹配合适的 LoRA
+
+    根据用户提示词和基模信息，智能匹配合适的 LoRA 及其触发词
+
+    请求体：
+    - user_prompt: 用户提示词（必填）
+    - base_model: 基模名称（可选，如 "SD 1.5", "SDXL"）
+    - checkpoint: 基模文件名（可选，如 "v1-5-pruned.safetensors"）
+    - limit: 返回数量限制（默认 10）
+    - min_score: 最低匹配分数（默认 0.0）
+
+    响应：
+    - matched_loras: 匹配的 LoRA 列表
+      - lora_id: LoRA ID
+      - lora_name: LoRA 文件名
+      - display_name: 显示名称
+      - description: 功能描述
+      - trigger_words: 触发词列表（用于 ComfyUI 提示词）
+      - trigger_weights: 触发词权重列表
+      - matched_keywords: 匹配到的用户关键词
+      - match_score: 匹配分数（0-1）
+      - base_model: 基模名称
+      - priority: 优先级
+      - file_size: 文件大小
+      - civitai_preview_url: Civitai 预览图 URL
+    - total_count: 匹配到的 LoRA 总数
+    - execution_time_ms: 执行时间（毫秒）
+    """
+    from app.lora_matcher import match_loras
+
+    result = match_loras(
+        user_prompt=request.user_prompt,
+        base_model=request.base_model,
+        checkpoint=request.checkpoint,
+        limit=request.limit,
+        min_score=request.min_score
+    )
+
+    return result
+
+
 # ==================== 灰度 API ====================
 # 灰度 API：将请求路由到打灰度标记的节点
 

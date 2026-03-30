@@ -7,6 +7,7 @@ const nav = [
   { path: "/queue", label: "队列" },
   { path: "/tasks", label: "任务" },
   { path: "/models", label: "模型" },
+  { path: "/loras", label: "LoRA" },
   { path: "/workflows", label: "工作流" },
   { path: "/submit", label: "提交测试" },
   { path: "/apikeys", label: "API Keys" },
