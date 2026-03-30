@@ -6,7 +6,8 @@ LoRA 管理模块
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
-from .database import execute, query, query_one, use_mysql
+from app.db import execute, fetchone, fetchall
+from app.config import use_mysql
 
 
 def ensure_tables():
@@ -137,7 +138,7 @@ def list_loras(
     """
 
     params.extend([limit, offset])
-    return query(sql, tuple(params))
+    return fetchall(sql, tuple(params))
 
 
 def count_loras(
@@ -158,7 +159,7 @@ def count_loras(
 
     where_clause = " AND ".join(conditions) if conditions else "1=1"
 
-    result = query_one(f"SELECT COUNT(*) as count FROM loras WHERE {where_clause}", tuple(params))
+    result = fetchone(f"SELECT COUNT(*) as count FROM loras WHERE {where_clause}", tuple(params))
     return result["count"] if result else 0
 
 
@@ -173,7 +174,7 @@ def get_lora(lora_id: int) -> Optional[Dict[str, Any]]:
         FROM loras l
         WHERE l.id = %s
     """
-    return query_one(sql, (lora_id,))
+    return fetchone(sql, (lora_id,))
 
 
 def create_lora(
@@ -266,7 +267,7 @@ def delete_lora(lora_id: int) -> bool:
 def get_lora_keywords(lora_id: int) -> List[Dict[str, Any]]:
     """获取 LoRA 的所有关键词"""
     sql = "SELECT * FROM lora_keywords WHERE lora_id = %s ORDER BY weight DESC, id ASC"
-    return query(sql, (lora_id,))
+    return fetchall(sql, (lora_id,))
 
 
 def add_keyword(lora_id: int, keyword: str, weight: float = 1.0) -> int:
@@ -288,7 +289,7 @@ def delete_keyword(lora_id: int, keyword_id: int) -> bool:
 def get_lora_base_models(lora_id: int) -> List[Dict[str, Any]]:
     """获取 LoRA 的所有基模关联"""
     sql = "SELECT * FROM lora_base_models WHERE lora_id = %s ORDER BY id ASC"
-    return query(sql, (lora_id,))
+    return fetchall(sql, (lora_id,))
 
 
 def add_base_model(
@@ -319,7 +320,7 @@ def delete_base_model(lora_id: int, assoc_id: int) -> bool:
 def get_lora_trigger_words(lora_id: int) -> List[Dict[str, Any]]:
     """获取 LoRA 的所有触发词"""
     sql = "SELECT * FROM lora_trigger_words WHERE lora_id = %s ORDER BY weight DESC, id ASC"
-    return query(sql, (lora_id,))
+    return fetchall(sql, (lora_id,))
 
 
 def add_trigger_word(

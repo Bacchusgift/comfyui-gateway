@@ -8,7 +8,7 @@ import jieba
 from typing import List, Dict, Any, Optional
 
 from app import lora_manager as lm
-from app.database import query
+from app.db import fetchall
 
 
 def match_loras(
@@ -58,7 +58,7 @@ def match_loras(
         WHERE l.enabled = TRUE
         AND lk.keyword IS NOT NULL
     """
-    all_keywords = query(sql)
+    all_keywords = fetchall(sql)
 
     # 3. 按关键词分组
     lora_keywords_map: Dict[int, List[Dict[str, Any]]] = {}
@@ -99,7 +99,7 @@ def match_loras(
             if checkpoint:
                 base_model_sql += f" AND base_model_filename = '{checkpoint}'"
 
-            base_models = query(base_model_sql, (lora_id,))
+            base_models = fetchall(base_model_sql, (lora_id,))
 
             # 如果配置了基模限制，但没有匹配的基模，跳过
             if base_model or checkpoint:
