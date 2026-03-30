@@ -575,6 +575,18 @@ export const loras = {
   deleteTriggerWord: (id: number, twId: number) =>
     request<{ message: string }>(`/loras/${id}/trigger-words/${twId}`, { method: "DELETE" }),
 
+  // 扫描文件夹
+  scan: () =>
+    request<{ scanned: number; added: number; updated: number; errors: string[] }>(
+      "/loras/scan",
+      { method: "POST" }
+    ),
+
+  getFileInfo: (loraName: string) =>
+    request<{ full_path: string; filename: string; file_size: number; exists: boolean }>(
+      `/loras/file-info/${encodeURIComponent(loraName)}`
+    ),
+
   // 匹配 API（使用 openapi 前缀，不需要认证）
   match: (data: MatchLorasRequest) =>
     request<{

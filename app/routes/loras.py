@@ -341,3 +341,58 @@ async def delete_lora_trigger_word(lora_id: int, tw_id: int):
 
     lm.delete_trigger_word(lora_id, tw_id)
     return {"message": "触发词已删除"}
+
+
+# ==================== 扫描功能 ====================
+
+@router.post("/scan")
+async def scan_loras():
+    """
+    POST /api/loras/scan - 扫描 loras 文件夹
+
+    扫描 ComfyUI 模型目录下的 loras 文件夹，自动添加新的 LoRA 到数据库。
+
+    支持的文件格式：.safetensors, .ckpt, .pt, .bin, .pth
+
+    返回：
+    - scanned: 扫描的文件总数
+    - added: 新增的 LoRA 数量
+    - updated: 更新的 LoRA 数量
+    - errors: 错误列表
+    """
+    result = await lm.scan_loras_folder()
+
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+
+    return result
+
+
+@router.get("/file-info/{lora_name}")
+async def get_lora_file_info(lora_name: str):
+    """
+    GET /api/loras/file-info/{lora_name} - 获取 LoRA 文件信息
+
+    获取指定 LoRA 的文件信息（路径、大小等）。
+
+    参数：
+    - lora_name: LoRA 相对路径（URL 编码）
+
+    返回：
+    - full_path: 完整文件路径
+    - filename: 文件名
+    - file_size: 文件大小
+    - exists: 文件是否存在
+    """
+    from urllib.parse import unquote
+
+    # URL 解码
+    decoded_name = unquote(lora_name)
+
+    result = lm.get_lora_file_info(decoded_name)
+
+    if not result:
+        raise HTTPException(status_code=404, detail=f"LoRA 文件不存在: {decoded_name}")
+
+    return result
+

@@ -5,9 +5,11 @@ LoRA 管理模块
 
 from typing import List, Dict, Any, Optional
 from datetime import datetime
+from pathlib import Path
+import os
 
 from app.db import execute, fetchone, fetchall
-from app.config import use_mysql
+from app.config import use_mysql, COMFYUI_MODELS_ROOT
 
 
 def ensure_tables():
@@ -340,3 +342,120 @@ def delete_trigger_word(lora_id: int, trigger_word_id: int) -> bool:
     sql = "DELETE FROM lora_trigger_words WHERE id = %s AND lora_id = %s"
     execute(sql, (trigger_word_id, lora_id))
     return True
+
+
+# ==================== LoRA 扫描功能 ====================
+
+def get_loras_root() -> Optional[str]:
+    """获取 LoRA 根目录（models/loras）"""
+    if not COMFYUI_MODELS_ROOT:
+        return None
+    lora_path = Path(COMFYUI_MODELS_ROOT) / "loras"
+    return str(lora_path) if lora_path.exists() else None
+
+
+async def scan_loras_folder() -> Dict[str, Any]:
+    """
+    扫描 LoRA 文件夹并自动添加到数据库
+
+    Returns:
+        {
+            "scanned": int,  # 扫描的文件数
+            "added": int,    # 新增的 LoRA 数
+            "updated": int,  # 更新的 LoRA 数
+            "errors": list   # 错误信息
+        }
+    """
+    if not use_mysql():
+        return {"error": "需要 MySQL 支持", "scanned": 0, "added": 0, "updated": 0, "errors": []}
+
+    loras_root = get_loras_root()
+    if not loras_root:
+        return {"error": "未配置模型根目录或 loras 目录不存在", "scanned": 0, "added": 0, "updated": 0, "errors": []}
+
+    loras_path = Path(loras_root)
+    if not loras_path.exists():
+        return {"error": f"LoRA 目录不存在: {loras_root}", "scanned": 0, "added": 0, "updated": 0, "errors": []}
+
+    # 支持的文件扩展名
+    extensions = [".safetensors", ".ckpt", ".pt", ".bin", ".pth"]
+
+    stats = {"scanned": 0, "added": 0, "updated": 0, "errors": []}
+
+    # 递归扫描所有子目录
+    for ext in extensions:
+        for file_path in loras_path.glob(f"**/*{ext}"):
+            stats["scanned"] += 1
+            try:
+                file_size = file_path.stat().st_size
+                filename = file_path.name
+
+                # 使用相对路径作为标识（相对于 loras 目录）
+                relative_path = str(file_path.relative_to(loras_path))
+
+                # 检查是否已存在（通过 lora_name）
+                existing = fetchone(
+                    "SELECT id, file_size FROM loras WHERE lora_name = %s",
+                    (relative_path,)
+                )
+
+                if existing:
+                    # 更新文件大小（如果变化）
+                    if existing["file_size"] != file_size:
+                        execute(
+                            "UPDATE loras SET file_size = %s, updated_at = NOW() WHERE id = %s",
+                            (file_size, existing["id"])
+                        )
+                        stats["updated"] += 1
+                else:
+                    # 自动生成显示名称（从文件名）
+                    display_name = filename
+                    # 移除扩展名
+                    for ext in extensions:
+                        if display_name.endswith(ext):
+                            display_name = display_name[:-len(ext)]
+                            break
+
+                    # 添加新 LoRA
+                    execute("""
+                        INSERT INTO loras (lora_name, display_name, file_size, enabled)
+                        VALUES (%s, %s, %s, TRUE)
+                    """, (relative_path, display_name, file_size))
+                    stats["added"] += 1
+
+            except Exception as e:
+                stats["errors"].append(f"{relative_path}: {str(e)}")
+
+    return stats
+
+
+def get_lora_file_info(lora_name: str) -> Optional[Dict[str, Any]]:
+    """
+    获取 LoRA 文件的详细信息
+
+    Args:
+        lora_name: LoRA 相对路径
+
+    Returns:
+        文件信息字典，包含文件路径、大小等
+    """
+    loras_root = get_loras_root()
+    if not loras_root:
+        return None
+
+    file_path = Path(loras_root) / lora_name
+    if not file_path.exists():
+        return None
+
+    try:
+        stat = file_path.stat()
+        return {
+            "full_path": str(file_path),
+            "filename": file_path.name,
+            "file_size": stat.st_size,
+            "modified_time": stat.st_mtime,
+            "exists": True
+        }
+    except Exception:
+        return None
+

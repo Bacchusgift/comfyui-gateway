@@ -10,6 +10,7 @@ export default function Loras() {
   const [selected, setSelected] = useState<LoraItem | null>(null);
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState<TabType>("keywords");
+  const [scanning, setScanning] = useState(false);
   const { success, error } = useToast();
   const { confirm, dialog: confirmDialog } = useConfirm();
 
@@ -54,6 +55,22 @@ export default function Loras() {
   useEffect(() => {
     loadList();
   }, [search]);
+
+  const handleScan = async () => {
+    setScanning(true);
+    try {
+      const result = await api.scan();
+      success(`扫描完成！扫描了 ${result.scanned} 个文件，新增 ${result.added} 个 LoRA，更新 ${result.updated} 个`);
+      if (result.errors.length > 0) {
+        console.warn("扫描错误:", result.errors);
+      }
+      loadList();
+    } catch (e: any) {
+      error(e.message);
+    } finally {
+      setScanning(false);
+    }
+  };
 
   // 加载选中 LoRA 的子项
   useEffect(() => {
@@ -227,7 +244,16 @@ export default function Loras() {
       <div className="flex gap-6">
         {/* 左侧：列表 + 创建表单 */}
         <div className="w-96 flex-shrink-0">
-          <h1 className="text-xl font-semibold text-gray-900 mb-4">LoRA 管理</h1>
+          <div className="flex items-center justify-between mb-4">
+            <h1 className="text-xl font-semibold text-gray-900">LoRA 管理</h1>
+            <button
+              onClick={handleScan}
+              disabled={scanning}
+              className="px-3 py-1.5 text-sm bg-green-600 text-white rounded hover:bg-green-700 disabled:bg-gray-400"
+            >
+              {scanning ? "扫描中..." : "扫描文件夹"}
+            </button>
+          </div>
 
           {/* 创建表单 */}
           <form onSubmit={handleCreate} className="bg-white rounded-lg border p-4 mb-4 space-y-3">
