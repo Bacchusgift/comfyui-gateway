@@ -396,3 +396,31 @@ async def get_lora_file_info(lora_name: str):
 
     return result
 
+
+@router.get("/base-models/available")
+async def get_available_base_models():
+    """
+    GET /api/loras/base-models/available - 获取可用的基模列表
+
+    扫描 checkpoints 和 diffusion_models 文件夹，返回可用的基模文件。
+
+    返回：
+    - checkpoints: checkpoints 文件夹中的模型列表
+      - filename: 文件名
+      - relative_path: 相对路径
+      - file_size: 文件大小
+    - diffusion_models: diffusion_models 文件夹中的模型列表
+      - filename: 文件名
+      - relative_path: 相对路径
+      - file_size: 文件大小
+    """
+    from app.model_manager import scan_base_model_folders
+
+    result = scan_base_model_folders()
+
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+
+    return result
+
+

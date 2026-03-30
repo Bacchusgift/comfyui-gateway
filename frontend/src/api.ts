@@ -587,6 +587,12 @@ export const loras = {
       `/loras/file-info/${encodeURIComponent(loraName)}`
     ),
 
+  getAvailableBaseModels: () =>
+    request<{
+      checkpoints: Array<{ filename: string; relative_path: string; file_size: number }>;
+      diffusion_models: Array<{ filename: string; relative_path: string; file_size: number }>;
+    }>("/loras/base-models/available"),
+
   // 匹配 API（使用 openapi 前缀，不需要认证）
   match: (data: MatchLorasRequest) =>
     request<{

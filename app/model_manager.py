@@ -20,14 +20,15 @@ from app import settings as st
 # 默认模型类型配置
 DEFAULT_MODEL_TYPES = [
     {"type_name": "checkpoints", "display_name": "主模型", "directory": "checkpoints", "file_extensions": [".safetensors", ".ckpt", ".pt", ".bin", ".pth"], "icon": "model", "sort_order": 1},
-    {"type_name": "loras", "display_name": "LoRA", "directory": "loras", "file_extensions": [".safetensors", ".ckpt"], "icon": "lora", "sort_order": 2},
-    {"type_name": "embeddings", "display_name": "Embedding", "directory": "embeddings", "file_extensions": [".safetensors", ".pt", ".bin"], "icon": "embedding", "sort_order": 3},
-    {"type_name": "vae", "display_name": "VAE", "directory": "vae", "file_extensions": [".safetensors", ".pt", ".bin"], "icon": "vae", "sort_order": 4},
-    {"type_name": "controlnet", "display_name": "ControlNet", "directory": "controlnet", "file_extensions": [".safetensors", ".pth"], "icon": "controlnet", "sort_order": 5},
-    {"type_name": "upscale_models", "display_name": "放大模型", "directory": "upscale_models", "file_extensions": [".safetensors", ".pt", ".pth", ".bin"], "icon": "upscale", "sort_order": 6},
-    {"type_name": "ipadapter", "display_name": "IPAdapter", "directory": "ipadapter", "file_extensions": [".safetensors", ".pth"], "icon": "ipadapter", "sort_order": 7},
-    {"type_name": "clip", "display_name": "CLIP", "directory": "clip", "file_extensions": [".safetensors", ".pt", ".bin"], "icon": "clip", "sort_order": 8},
-    {"type_name": "unet", "display_name": "UNet", "directory": "unet", "file_extensions": [".safetensors", ".pt", ".bin"], "icon": "unet", "sort_order": 9},
+    {"type_name": "diffusion_models", "display_name": "Diffusion 模型", "directory": "diffusion_models", "file_extensions": [".safetensors", ".ckpt", ".pt", ".bin", ".pth"], "icon": "model", "sort_order": 2},
+    {"type_name": "loras", "display_name": "LoRA", "directory": "loras", "file_extensions": [".safetensors", ".ckpt"], "icon": "lora", "sort_order": 3},
+    {"type_name": "embeddings", "display_name": "Embedding", "directory": "embeddings", "file_extensions": [".safetensors", ".pt", ".bin"], "icon": "embedding", "sort_order": 4},
+    {"type_name": "vae", "display_name": "VAE", "directory": "vae", "file_extensions": [".safetensors", ".pt", ".bin"], "icon": "vae", "sort_order": 5},
+    {"type_name": "controlnet", "display_name": "ControlNet", "directory": "controlnet", "file_extensions": [".safetensors", ".pth"], "icon": "controlnet", "sort_order": 6},
+    {"type_name": "upscale_models", "display_name": "放大模型", "directory": "upscale_models", "file_extensions": [".safetensors", ".pt", ".pth", ".bin"], "icon": "upscale", "sort_order": 7},
+    {"type_name": "ipadapter", "display_name": "IPAdapter", "directory": "ipadapter", "file_extensions": [".safetensors", ".pth"], "icon": "ipadapter", "sort_order": 8},
+    {"type_name": "clip", "display_name": "CLIP", "directory": "clip", "file_extensions": [".safetensors", ".pt", ".bin"], "icon": "clip", "sort_order": 9},
+    {"type_name": "unet", "display_name": "UNet", "directory": "unet", "file_extensions": [".safetensors", ".pt", ".bin"], "icon": "unet", "sort_order": 10},
 ]
 
 
@@ -659,3 +660,68 @@ def get_model_stats() -> dict:
         "total_size": total_row["total_size"] if total_row else 0,
         "downloads": download_stats or {},
     }
+
+
+# ==================== 基模扫描 ====================
+
+def scan_base_model_folders() -> dict:
+    """
+    扫描基模文件夹，返回可用的基模列表
+
+    Returns:
+        {
+            "checkpoints": [...],  # checkpoints 文件夹中的模型
+            "diffusion_models": [...]  # diffusion_models 文件夹中的模型
+        }
+    """
+    models_root = get_models_root()
+    if not models_root:
+        return {"error": "未配置模型根目录"}
+
+    root_path = Path(models_root)
+    if not root_path.exists():
+        return {"error": f"模型根目录不存在: {models_root}"}
+
+    result = {
+        "checkpoints": [],
+        "diffusion_models": []
+    }
+
+    # 扫描 checkpoints 文件夹
+    checkpoints_dir = root_path / "checkpoints"
+    if checkpoints_dir.exists():
+        extensions = [".safetensors", ".ckpt", ".pt", ".bin", ".pth"]
+        for ext in extensions:
+            for file_path in checkpoints_dir.glob(f"*{ext}"):
+                try:
+                    result["checkpoints"].append({
+                        "filename": file_path.name,
+                        "relative_path": f"checkpoints/{file_path.name}",
+                        "file_size": file_path.stat().st_size
+                    })
+                except Exception:
+                    pass
+
+        # 排序：按文件名
+        result["checkpoints"].sort(key=lambda x: x["filename"])
+
+    # 扫描 diffusion_models 文件夹
+    diffusion_dir = root_path / "diffusion_models"
+    if diffusion_dir.exists():
+        extensions = [".safetensors", ".ckpt", ".pt", ".bin", ".pth"]
+        for ext in extensions:
+            for file_path in diffusion_dir.glob(f"*{ext}"):
+                try:
+                    result["diffusion_models"].append({
+                        "filename": file_path.name,
+                        "relative_path": f"diffusion_models/{file_path.name}",
+                        "file_size": file_path.stat().st_size
+                    })
+                except Exception:
+                    pass
+
+        # 排序：按文件名
+        result["diffusion_models"].sort(key=lambda x: x["filename"])
+
+    return result
+

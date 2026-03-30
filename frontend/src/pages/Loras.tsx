@@ -5,6 +5,12 @@ import { useConfirm } from "../hooks/useConfirm";
 
 type TabType = "keywords" | "base-models" | "trigger-words";
 
+interface AvailableBaseModel {
+  filename: string;
+  relative_path: string;
+  file_size: number;
+}
+
 export default function Loras() {
   const [list, setList] = useState<LoraItem[]>([]);
   const [selected, setSelected] = useState<LoraItem | null>(null);
@@ -13,6 +19,12 @@ export default function Loras() {
   const [scanning, setScanning] = useState(false);
   const { success, error } = useToast();
   const { confirm, dialog: confirmDialog } = useConfirm();
+
+  // 可用基模列表
+  const [availableBaseModels, setAvailableBaseModels] = useState<{
+    checkpoints: AvailableBaseModel[];
+    diffusion_models: AvailableBaseModel[];
+  }>({ checkpoints: [], diffusion_models: [] });
 
   // 表单状态
   const [createForm, setCreateForm] = useState({
@@ -52,25 +64,16 @@ export default function Loras() {
       .catch((e) => error(e.message));
   };
 
+  const loadAvailableBaseModels = () => {
+    api.getAvailableBaseModels()
+      .then((r) => setAvailableBaseModels(r))
+      .catch((e) => console.error("加载基模列表失败:", e));
+  };
+
   useEffect(() => {
     loadList();
+    loadAvailableBaseModels();
   }, [search]);
-
-  const handleScan = async () => {
-    setScanning(true);
-    try {
-      const result = await api.scan();
-      success(`扫描完成！扫描了 ${result.scanned} 个文件，新增 ${result.added} 个 LoRA，更新 ${result.updated} 个`);
-      if (result.errors.length > 0) {
-        console.warn("扫描错误:", result.errors);
-      }
-      loadList();
-    } catch (e: any) {
-      error(e.message);
-    } finally {
-      setScanning(false);
-    }
-  };
 
   // 加载选中 LoRA 的子项
   useEffect(() => {
@@ -147,6 +150,22 @@ export default function Loras() {
       .catch((e) => error(e.message));
   };
 
+  const handleScan = async () => {
+    setScanning(true);
+    try {
+      const result = await api.scan();
+      success(`扫描完成！扫描了 ${result.scanned} 个文件，新增 ${result.added} 个 LoRA，更新 ${result.updated} 个`);
+      if (result.errors.length > 0) {
+        console.warn("扫描错误:", result.errors);
+      }
+      loadList();
+    } catch (e: any) {
+      error(e.message);
+    } finally {
+      setScanning(false);
+    }
+  };
+
   // 添加关键词
   const handleAddKeyword = (e: React.FormEvent) => {
     e.preventDefault();
@@ -176,7 +195,7 @@ export default function Loras() {
       .catch((e) => error(e.message));
   };
 
-  // 添加基模关联
+  // 添加基模关联（从下拉选择）
   const handleAddBaseModel = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selected) return;
@@ -194,6 +213,17 @@ export default function Loras() {
         loadList();
       })
       .catch((e) => error(e.message));
+  };
+
+  // 从下拉列表选择基模
+  const handleSelectBaseModel = (relativePath: string, folderName: string) => {
+    // 自动填充表单
+    setBaseModelForm({
+      base_model_name: folderName, // 如 "checkpoints" 或 "diffusion_models"
+      base_model_filename: relativePath.split("/").pop() || "", // 文件名
+      compatible: true,
+      notes: "",
+    });
   };
 
   const handleDeleteBaseModel = (assocId: number) => {
@@ -243,7 +273,7 @@ export default function Loras() {
 
       <div className="flex gap-6">
         {/* 左侧：列表 + 创建表单 */}
-        <div className="w-96 flex-shrink-0">
+        <div className="flex-1">
           <div className="flex items-center justify-between mb-4">
             <h1 className="text-xl font-semibold text-gray-900">LoRA 管理</h1>
             <button
@@ -256,64 +286,67 @@ export default function Loras() {
           </div>
 
           {/* 创建表单 */}
-          <form onSubmit={handleCreate} className="bg-white rounded-lg border p-4 mb-4 space-y-3">
-            <div>
-              <label className="block text-sm text-gray-600 mb-1">文件名 *</label>
-              <input
-                type="text"
-                value={createForm.lora_name}
-                onChange={(e) => setCreateForm((f) => ({ ...f, lora_name: e.target.value }))}
-                placeholder="如: sports_better.safetensors"
-                className="w-full border rounded px-3 py-2"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-gray-600 mb-1">显示名称</label>
-              <input
-                type="text"
-                value={createForm.display_name}
-                onChange={(e) => setCreateForm((f) => ({ ...f, display_name: e.target.value }))}
-                placeholder="如: 运动增强"
-                className="w-full border rounded px-3 py-2"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-gray-600 mb-1">描述</label>
-              <input
-                type="text"
-                value={createForm.description}
-                onChange={(e) => setCreateForm((f) => ({ ...f, description: e.target.value }))}
-                placeholder="功能描述"
-                className="w-full border rounded px-3 py-2"
-              />
-            </div>
-            <div className="flex gap-2">
-              <div className="flex-1">
-                <label className="block text-sm text-gray-600 mb-1">优先级</label>
+          <details className="bg-white rounded-lg border p-4 mb-4">
+            <summary className="cursor-pointer font-medium text-gray-700">添加新 LoRA</summary>
+            <form onSubmit={handleCreate} className="mt-4 space-y-3">
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">文件名 *</label>
                 <input
-                  type="number"
-                  min={0}
-                  value={createForm.priority}
-                  onChange={(e) => setCreateForm((f) => ({ ...f, priority: parseInt(e.target.value, 10) || 0 }))}
+                  type="text"
+                  value={createForm.lora_name}
+                  onChange={(e) => setCreateForm((f) => ({ ...f, lora_name: e.target.value }))}
+                  placeholder="如: sports_better.safetensors"
                   className="w-full border rounded px-3 py-2"
                 />
               </div>
-              <div className="flex items-center pb-2">
-                <label className="flex items-center gap-2 text-sm text-gray-600">
-                  <input
-                    type="checkbox"
-                    checked={createForm.enabled}
-                    onChange={(e) => setCreateForm((f) => ({ ...f, enabled: e.target.checked }))}
-                    className="h-4 w-4 text-blue-600"
-                  />
-                  启用
-                </label>
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">显示名称</label>
+                <input
+                  type="text"
+                  value={createForm.display_name}
+                  onChange={(e) => setCreateForm((f) => ({ ...f, display_name: e.target.value }))}
+                  placeholder="如: 运动增强"
+                  className="w-full border rounded px-3 py-2"
+                />
               </div>
-            </div>
-            <button type="submit" className="w-full bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
-              添加 LoRA
-            </button>
-          </form>
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">描述</label>
+                <input
+                  type="text"
+                  value={createForm.description}
+                  onChange={(e) => setCreateForm((f) => ({ ...f, description: e.target.value }))}
+                  placeholder="功能描述"
+                  className="w-full border rounded px-3 py-2"
+                />
+              </div>
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <label className="block text-sm text-gray-600 mb-1">优先级</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={createForm.priority}
+                    onChange={(e) => setCreateForm((f) => ({ ...f, priority: parseInt(e.target.value, 10) || 0 }))}
+                    className="w-full border rounded px-3 py-2"
+                  />
+                </div>
+                <div className="flex items-center pb-2">
+                  <label className="flex items-center gap-2 text-sm text-gray-600">
+                    <input
+                      type="checkbox"
+                      checked={createForm.enabled}
+                      onChange={(e) => setCreateForm((f) => ({ ...f, enabled: e.target.checked }))}
+                      className="h-4 w-4 text-blue-600"
+                    />
+                    启用
+                  </label>
+                </div>
+              </div>
+              <button type="submit" className="w-full bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+                添加 LoRA
+              </button>
+            </form>
+          </details>
 
           {/* 搜索框 */}
           <div className="mb-3">
@@ -326,66 +359,87 @@ export default function Loras() {
             />
           </div>
 
-          {/* 列表 */}
+          {/* LoRA 列表（表格） */}
           <div className="bg-white rounded-lg border overflow-hidden">
-            {list.map((lora) => (
-              <div
-                key={lora.id}
-                onClick={() => setSelected(lora)}
-                className={`px-4 py-3 border-b last:border-b-0 cursor-pointer hover:bg-gray-50 ${
-                  selected?.id === lora.id ? "bg-blue-50" : ""
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium text-gray-900 truncate">{lora.display_name || lora.lora_name}</div>
-                    <div className="text-sm text-gray-500 truncate">{lora.lora_name}</div>
-                  </div>
-                  <div className="flex items-center gap-2 ml-2">
-                    <span className={`text-xs px-2 py-0.5 rounded ${lora.enabled ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"}`}>
-                      {lora.enabled ? "启用" : "禁用"}
-                    </span>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDelete(lora.id);
-                      }}
-                      className="text-red-600 hover:text-red-700 text-sm"
-                    >
-                      删除
-                    </button>
-                  </div>
-                </div>
-                <div className="flex gap-3 mt-1 text-xs text-gray-500">
-                  <span>关键词: {lora.keyword_count}</span>
-                  <span>基模: {lora.base_model_count}</span>
-                  <span>触发词: {lora.trigger_word_count}</span>
-                </div>
-              </div>
-            ))}
-            {list.length === 0 && (
-              <div className="px-4 py-8 text-center text-gray-500">暂无 LoRA</div>
-            )}
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">显示名称</th>
+                  <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">文件名</th>
+                  <th className="px-4 py-2 text-center text-sm font-medium text-gray-700">关键词</th>
+                  <th className="px-4 py-2 text-center text-sm font-medium text-gray-700">基模</th>
+                  <th className="px-4 py-2 text-center text-sm font-medium text-gray-700">触发词</th>
+                  <th className="px-4 py-2 text-center text-sm font-medium text-gray-700">状态</th>
+                  <th className="px-4 py-2 text-center text-sm font-medium text-gray-700">操作</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {list.map((lora) => (
+                  <tr
+                    key={lora.id}
+                    onClick={() => setSelected(lora)}
+                    className={`cursor-pointer hover:bg-gray-50 ${
+                      selected?.id === lora.id ? "bg-blue-50" : ""
+                    }`}
+                  >
+                    <td className="px-4 py-3 text-sm font-medium text-gray-900">{lora.display_name || "-"}</td>
+                    <td className="px-4 py-3 text-sm text-gray-500 truncate max-w-xs" title={lora.lora_name}>{lora.lora_name}</td>
+                    <td className="px-4 py-3 text-sm text-gray-500 text-center">{lora.keyword_count}</td>
+                    <td className="px-4 py-3 text-sm text-gray-500 text-center">{lora.base_model_count}</td>
+                    <td className="px-4 py-3 text-sm text-gray-500 text-center">{lora.trigger_word_count}</td>
+                    <td className="px-4 py-3 text-center">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleUpdateEnabled(lora, !lora.enabled);
+                        }}
+                        className={`text-xs px-2 py-1 rounded ${
+                          lora.enabled ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"
+                        }`}
+                      >
+                        {lora.enabled ? "启用" : "禁用"}
+                      </button>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDelete(lora.id);
+                        }}
+                        className="text-red-600 hover:text-red-700 text-sm"
+                      >
+                        删除
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {list.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-8 text-center text-gray-500">暂无 LoRA</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
 
         {/* 右侧：详情面板 */}
-        <div className="flex-1">
+        <div className="w-96 flex-shrink-0">
           {selected ? (
             <div className="bg-white rounded-lg border p-6">
               {/* 基本信息 */}
               <div className="mb-6">
                 <h2 className="text-lg font-semibold text-gray-900 mb-3">基本信息</h2>
-                <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="space-y-2 text-sm">
                   <div>
                     <span className="text-gray-500">显示名称:</span>
                     <span className="ml-2 font-medium">{selected.display_name || "-"}</span>
                   </div>
                   <div>
                     <span className="text-gray-500">文件名:</span>
-                    <span className="ml-2 font-medium">{selected.lora_name}</span>
+                    <span className="ml-2 font-mono text-xs break-all">{selected.lora_name}</span>
                   </div>
-                  <div className="col-span-2">
+                  <div>
                     <span className="text-gray-500">描述:</span>
                     <span className="ml-2">{selected.description || "-"}</span>
                   </div>
@@ -481,22 +535,57 @@ export default function Loras() {
                 {activeTab === "base-models" && (
                   <div>
                     <form onSubmit={handleAddBaseModel} className="space-y-3 mb-4">
-                      <div className="flex gap-2">
+                      {/* 从文件夹选择 */}
+                      <div>
+                        <label className="block text-sm text-gray-600 mb-1">从文件夹选择基模</label>
+                        <select
+                          className="w-full border rounded px-3 py-2"
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            if (value) {
+                              const [folder, path] = value.split(":");
+                              handleSelectBaseModel(path, folder);
+                            }
+                          }}
+                          defaultValue=""
+                        >
+                          <option value="">-- 选择基模 --</option>
+                          <optgroup label="Checkpoints">
+                            {availableBaseModels.checkpoints.map((bm) => (
+                              <option key={bm.relative_path} value={`checkpoints:${bm.relative_path}`}>
+                                {bm.filename}
+                              </option>
+                            ))}
+                          </optgroup>
+                          <optgroup label="Diffusion Models">
+                            {availableBaseModels.diffusion_models.map((bm) => (
+                              <option key={bm.relative_path} value={`diffusion_models:${bm.relative_path}`}>
+                                {bm.filename}
+                              </option>
+                            ))}
+                          </optgroup>
+                        </select>
+                      </div>
+
+                      {/* 手动输入 */}
+                      <div>
+                        <label className="block text-sm text-gray-600 mb-1">或手动输入</label>
                         <input
                           type="text"
-                          value={baseModelForm.base_model_name}
+                          value={baseModelForm.base_model_name || ""}
                           onChange={(e) => setBaseModelForm((f) => ({ ...f, base_model_name: e.target.value }))}
                           placeholder="基模名称 (如 SD 1.5, SDXL)"
-                          className="flex-1 border rounded px-3 py-2"
+                          className="w-full border rounded px-3 py-2 mb-2"
                         />
                         <input
                           type="text"
-                          value={baseModelForm.base_model_filename}
+                          value={baseModelForm.base_model_filename || ""}
                           onChange={(e) => setBaseModelForm((f) => ({ ...f, base_model_filename: e.target.value }))}
                           placeholder="文件名 (如 v1-5-pruned.safetensors)"
-                          className="flex-1 border rounded px-3 py-2"
+                          className="w-full border rounded px-3 py-2"
                         />
                       </div>
+
                       <div className="flex gap-2 items-center">
                         <label className="flex items-center gap-2 text-sm text-gray-600">
                           <input
@@ -507,34 +596,30 @@ export default function Loras() {
                           />
                           兼容
                         </label>
-                        <input
-                          type="text"
-                          value={baseModelForm.notes}
-                          onChange={(e) => setBaseModelForm((f) => ({ ...f, notes: e.target.value }))}
-                          placeholder="备注"
-                          className="flex-1 border rounded px-3 py-2"
-                        />
-                        <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
-                          添加
-                        </button>
                       </div>
+                      <button type="submit" className="w-full bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+                        添加
+                      </button>
                     </form>
                     <div className="space-y-2">
                       {baseModels.map((bm) => (
                         <div key={bm.id} className="flex items-center justify-between p-3 bg-gray-50 rounded">
-                          <div>
-                            <span className="font-medium">{bm.base_model_name || bm.base_model_filename || "未知"}</span>
-                            <span className={`ml-2 text-xs px-2 py-0.5 rounded ${bm.compatible ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium truncate">{bm.base_model_name || bm.base_model_filename || "未知"}</div>
+                            <div className="text-xs text-gray-500 truncate">{bm.base_model_filename || bm.base_model_name}</div>
+                            {bm.notes && <div className="text-xs text-gray-500 mt-1">{bm.notes}</div>}
+                          </div>
+                          <div className="flex items-center gap-2 ml-2">
+                            <span className={`text-xs px-2 py-0.5 rounded ${bm.compatible ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
                               {bm.compatible ? "兼容" : "不兼容"}
                             </span>
-                            {bm.notes && <span className="ml-2 text-sm text-gray-500">{bm.notes}</span>}
+                            <button
+                              onClick={() => handleDeleteBaseModel(bm.id)}
+                              className="text-red-600 hover:text-red-700 text-sm whitespace-nowrap"
+                            >
+                              删除
+                            </button>
                           </div>
-                          <button
-                            onClick={() => handleDeleteBaseModel(bm.id)}
-                            className="text-red-600 hover:text-red-700 text-sm"
-                          >
-                            删除
-                          </button>
                         </div>
                       ))}
                       {baseModels.length === 0 && (
