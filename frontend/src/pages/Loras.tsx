@@ -3,12 +3,21 @@ import { loras as api, type LoraItem, type LoraKeyword, type LoraBaseModel, type
 import { useToast } from "../components/Toast";
 import { useConfirm } from "../hooks/useConfirm";
 
-type TabType = "keywords" | "base-models" | "trigger-words";
+type TabType = "keywords" | "base-models" | "trigger-words" | "group";
 
 interface AvailableBaseModel {
   filename: string;
   relative_path: string;
   file_size: number;
+}
+
+interface LoraGroup {
+  id: number;
+  group_name: string;
+  display_name: string | null;
+  description: string | null;
+  lora_count: number;
+  default_lora_id: number | null;
 }
 
 export default function Loras() {
@@ -26,6 +35,9 @@ export default function Loras() {
     diffusion_models: AvailableBaseModel[];
   }>({ checkpoints: [], diffusion_models: [] });
 
+  // LoRA 组列表
+  const [groups, setGroups] = useState<LoraGroup[]>([]);
+
   // 表单状态
   const [createForm, setCreateForm] = useState({
     lora_name: "",
@@ -33,6 +45,12 @@ export default function Loras() {
     description: "",
     priority: 0,
     enabled: true,
+  });
+
+  // 版本标签表单
+  const [versionTagForm, setVersionTagForm] = useState({
+    group_id: null as number | null,
+    version_tag: "",
   });
 
   // 关键词表单
@@ -57,6 +75,7 @@ export default function Loras() {
   const [keywords, setKeywords] = useState<LoraKeyword[]>([]);
   const [baseModels, setBaseModels] = useState<LoraBaseModel[]>([]);
   const [triggerWords, setTriggerWords] = useState<LoraTriggerWord[]>([]);
+  const [groupLoras, setGroupLoras] = useState<LoraItem[]>([]);
 
   const loadList = () => {
     api.list({ search: search || undefined })
@@ -70,9 +89,16 @@ export default function Loras() {
       .catch((e) => console.error("加载基模列表失败:", e));
   };
 
+  const loadGroups = () => {
+    api.listGroups()
+      .then((r) => setGroups(r.groups))
+      .catch((e) => console.error("加载组列表失败:", e));
+  };
+
   useEffect(() => {
     loadList();
     loadAvailableBaseModels();
+    loadGroups();
   }, [search]);
 
   // 加载选中 LoRA 的子项
@@ -81,6 +107,7 @@ export default function Loras() {
       setKeywords([]);
       setBaseModels([]);
       setTriggerWords([]);
+      setGroupLoras([]);
       return;
     }
 
@@ -94,6 +121,15 @@ export default function Loras() {
         setKeywords(kwRes.keywords);
         setBaseModels(bmRes.base_models);
         setTriggerWords(twRes.trigger_words);
+
+        // 如果有组，加载组内其他 LoRA
+        if ((selected as any).group_id) {
+          api.getGroupLoras((selected as any).group_id)
+            .then((r) => setGroupLoras(r.loras))
+            .catch(() => setGroupLoras([]));
+        } else {
+          setGroupLoras([]);
+        }
       } catch (e: any) {
         error(e.message);
       }
@@ -263,6 +299,23 @@ export default function Loras() {
         setTriggerWords(triggerWords.filter((t) => t.id !== twId));
         success("触发词已删除");
         loadList();
+      })
+      .catch((e) => error(e.message));
+  };
+
+  // 处理版本标签更新
+  const handleUpdateVersion = () => {
+    if (!selected) return;
+
+    api.assignLoraGroup(selected.id, {
+      group_id: versionTagForm.group_id,
+      version_tag: versionTagForm.version_tag || undefined,
+    })
+      .then((updated) => {
+        setSelected(updated);
+        success("版本信息已更新");
+        loadList();
+        loadGroups(); // 刷新组信息
       })
       .catch((e) => error(e.message));
   };
@@ -447,6 +500,29 @@ export default function Loras() {
                     <span className="text-gray-500">优先级:</span>
                     <span className="ml-2 font-medium">{selected.priority}</span>
                   </div>
+                  {/* 版本标签 */}
+                  <div>
+                    <span className="text-gray-500">版本标签:</span>
+                    {(selected as any).version_tag ? (
+                      <span className="ml-2 inline-block px-2 py-0.5 bg-purple-100 text-purple-700 rounded text-xs font-medium">
+                        {(selected as any).version_tag}
+                      </span>
+                    ) : (
+                      <span className="ml-2 text-gray-400">未设置</span>
+                    )}
+                  </div>
+                  {/* 组信息 */}
+                  <div>
+                    <span className="text-gray-500">所属组:</span>
+                    {(selected as any).group_id ? (
+                      <span className="ml-2 text-blue-600">
+                        {groups.find(g => g.id === (selected as any).group_id)?.display_name ||
+                         groups.find(g => g.id === (selected as any).group_id)?.group_name}
+                      </span>
+                    ) : (
+                      <span className="ml-2 text-gray-400">未分组</span>
+                    )}
+                  </div>
                   <div>
                     <span className="text-gray-500">状态:</span>
                     <button
@@ -468,6 +544,7 @@ export default function Loras() {
                     { key: "keywords" as TabType, label: "关键词" },
                     { key: "base-models" as TabType, label: "基模关联" },
                     { key: "trigger-words" as TabType, label: "触发词" },
+                    { key: "group" as TabType, label: "版本管理" },
                   ].map((tab) => (
                     <button
                       key={tab.key}
@@ -683,6 +760,99 @@ export default function Loras() {
                       {triggerWords.length === 0 && (
                         <div className="text-center text-gray-500 py-4">暂无触发词</div>
                       )}
+                    </div>
+                  </div>
+                )}
+
+                {activeTab === "group" && (
+                  <div>
+                    <div className="space-y-4">
+                      {/* 版本标签设置 */}
+                      <div className="bg-gray-50 p-4 rounded">
+                        <h3 className="font-medium text-gray-900 mb-3">版本标签</h3>
+                        <div className="space-y-3">
+                          <div>
+                            <label className="block text-sm text-gray-600 mb-1">版本标签</label>
+                            <input
+                              type="text"
+                              value={versionTagForm.version_tag}
+                              onChange={(e) => setVersionTagForm((f) => ({ ...f, version_tag: e.target.value }))}
+                              placeholder="如: low, high, v1, v2"
+                              className="w-full border rounded px-3 py-2"
+                            />
+                            <p className="text-xs text-gray-500 mt-1">用于区分同一组内的不同版本（如 low/high 版本）</p>
+                          </div>
+                          <button
+                            onClick={handleUpdateVersion}
+                            className="w-full bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+                          >
+                            更新版本信息
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* 组选择 */}
+                      <div className="bg-gray-50 p-4 rounded">
+                        <h3 className="font-medium text-gray-900 mb-3">LoRA 组</h3>
+                        <div className="space-y-3">
+                          <div>
+                            <label className="block text-sm text-gray-600 mb-1">选择组</label>
+                            <select
+                              className="w-full border rounded px-3 py-2"
+                              value={versionTagForm.group_id || ""}
+                              onChange={(e) => setVersionTagForm((f) => ({ ...f, group_id: e.target.value ? parseInt(e.target.value) : null }))}
+                            >
+                              <option value="">-- 不分组 --</option>
+                              {groups.map((g) => (
+                                <option key={g.id} value={g.id}>
+                                  {g.display_name || g.group_name} ({g.lora_count} 个 LoRA)
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          {(selected as any).group_id && groupLoras.length > 0 && (
+                            <div>
+                              <label className="block text-sm text-gray-600 mb-2">组内其他版本</label>
+                              <div className="space-y-2">
+                                {groupLoras.map((l) => (
+                                  <div key={l.id} className="flex items-center justify-between p-2 bg-white rounded">
+                                    <div className="flex-1 min-w-0">
+                                      <div className="text-sm font-medium truncate">
+                                        {l.display_name || l.lora_name}
+                                      </div>
+                                      <div className="text-xs text-gray-500">
+                                        {(l as any).version_tag && (
+                                          <span className="inline-block px-1 py-0.5 bg-purple-100 text-purple-700 rounded mr-1">
+                                            {(l as any).version_tag}
+                                          </span>
+                                        )}
+                                        {l.id === selected.id && "(当前)"}
+                                      </div>
+                                    </div>
+                                    <button
+                                      onClick={() => setSelected(l)}
+                                      className="text-blue-600 hover:text-blue-700 text-sm ml-2"
+                                    >
+                                      查看
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* 使用说明 */}
+                      <div className="bg-blue-50 p-4 rounded">
+                        <h3 className="font-medium text-blue-900 mb-2">💡 使用说明</h3>
+                        <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
+                          <li><strong>版本标签</strong>：用于区分同一功能的不同版本（如 low/high 轻重版本）</li>
+                          <li><strong>LoRA 组</strong>：将相关的 LoRA 组织在一起（如同一系列的不同版本）</li>
+                          <li>设置组后，可以在"组内其他版本"中快速切换查看同一组的其他 LoRA</li>
+                          <li>匹配 API 会返回组的信息，方便调用者选择合适的版本</li>
+                        </ul>
+                      </div>
                     </div>
                   </div>
                 )}

@@ -19,6 +19,21 @@ def ensure_tables():
         return
 
     try:
+        # LoRA 组表
+        execute("""
+            CREATE TABLE IF NOT EXISTS lora_groups (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                group_name VARCHAR(255) NOT NULL UNIQUE COMMENT '组名',
+                display_name VARCHAR(255) DEFAULT NULL COMMENT '显示名称',
+                description TEXT DEFAULT NULL COMMENT '组描述',
+                default_version_id INT DEFAULT NULL COMMENT '默认使用的 LoRA ID',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                INDEX idx_group_name (group_name)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            COMMENT='LoRA 组表'
+        """)
+
         # LoRA 主表
         execute("""
             CREATE TABLE IF NOT EXISTS loras (
@@ -29,13 +44,17 @@ def ensure_tables():
                 priority INT DEFAULT 0 COMMENT '优先级，用于排序',
                 enabled BOOLEAN DEFAULT TRUE COMMENT '是否启用',
                 file_size BIGINT DEFAULT 0 COMMENT '文件大小（字节）',
+                group_id INT DEFAULT NULL COMMENT '所属组 ID',
+                version_tag VARCHAR(64) DEFAULT NULL COMMENT '版本标签（如 low, high, v1, v2）',
                 civitai_model_id VARCHAR(64) DEFAULT NULL COMMENT 'Civitai 模型 ID',
                 civitai_version_id VARCHAR(64) DEFAULT NULL COMMENT 'Civitai 版本 ID',
                 civitai_preview_url VARCHAR(512) DEFAULT NULL COMMENT 'Civitai 预览图 URL',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                 INDEX idx_enabled (enabled),
-                INDEX idx_priority (priority)
+                INDEX idx_priority (priority),
+                INDEX idx_group_id (group_id),
+                FOREIGN KEY (group_id) REFERENCES lora_groups(id) ON DELETE SET NULL
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             COMMENT='LoRA 主表'
         """)
@@ -458,4 +477,120 @@ def get_lora_file_info(lora_name: str) -> Optional[Dict[str, Any]]:
         }
     except Exception:
         return None
+
+
+# ==================== LoRA 组管理 ====================
+
+def list_groups() -> List[Dict[str, Any]]:
+    """获取所有 LoRA 组"""
+    sql = """
+        SELECT
+            g.*,
+            (SELECT COUNT(*) FROM loras l WHERE l.group_id = g.id) as lora_count,
+            (SELECT l.id FROM loras l WHERE l.group_id = g.id AND l.enabled = TRUE ORDER BY l.priority DESC LIMIT 1) as default_lora_id
+        FROM lora_groups g
+        ORDER BY g.id DESC
+    """
+    return fetchall(sql)
+
+
+def get_group(group_id: int) -> Optional[Dict[str, Any]]:
+    """获取单个组详情"""
+    sql = """
+        SELECT
+            g.*,
+            (SELECT COUNT(*) FROM loras l WHERE l.group_id = g.id) as lora_count
+        FROM lora_groups g
+        WHERE g.id = %s
+    """
+    return fetchone(sql, (group_id,))
+
+
+def create_group(
+    group_name: str,
+    display_name: Optional[str] = None,
+    description: Optional[str] = None,
+    default_version_id: Optional[int] = None
+) -> int:
+    """创建 LoRA 组，返回新 ID"""
+    sql = """
+        INSERT INTO lora_groups (group_name, display_name, description, default_version_id)
+        VALUES (%s, %s, %s, %s)
+    """
+    result = execute(sql, (group_name, display_name, description, default_version_id))
+    return result.last_id
+
+
+def update_group(
+    group_id: int,
+    group_name: Optional[str] = None,
+    display_name: Optional[str] = None,
+    description: Optional[str] = None,
+    default_version_id: Optional[int] = None
+) -> bool:
+    """更新 LoRA 组"""
+    fields = []
+    params = []
+
+    if group_name is not None:
+        fields.append("group_name = %s")
+        params.append(group_name)
+    if display_name is not None:
+        fields.append("display_name = %s")
+        params.append(display_name)
+    if description is not None:
+        fields.append("description = %s")
+        params.append(description)
+    if default_version_id is not None:
+        fields.append("default_version_id = %s")
+        params.append(default_version_id)
+
+    if not fields:
+        return False
+
+    params.append(group_id)
+    sql = f"UPDATE lora_groups SET {', '.join(fields)} WHERE id = %s"
+    execute(sql, tuple(params))
+    return True
+
+
+def delete_group(group_id: int) -> bool:
+    """删除 LoRA 组（会解除组关联，但不删除 LoRA）"""
+    # 先解除关联
+    execute("UPDATE loras SET group_id = NULL WHERE group_id = %s", (group_id,))
+    # 删除组
+    execute("DELETE FROM lora_groups WHERE id = %s", (group_id,))
+    return True
+
+
+def get_group_loras(group_id: int) -> List[Dict[str, Any]]:
+    """获取组内的所有 LoRA"""
+    sql = """
+        SELECT
+            l.*,
+            (SELECT COUNT(*) FROM lora_keywords lk WHERE lk.lora_id = l.id) as keyword_count,
+            (SELECT COUNT(*) FROM lora_base_models lbm WHERE lbm.lora_id = l.id) as base_model_count,
+            (SELECT COUNT(*) FROM lora_trigger_words lt WHERE lt.lora_id = l.id) as trigger_word_count
+        FROM loras l
+        WHERE l.group_id = %s
+        ORDER BY l.priority DESC, l.id ASC
+    """
+    return fetchall(sql, (group_id,))
+
+
+def assign_lora_to_group(lora_id: int, group_id: Optional[int], version_tag: Optional[str] = None) -> bool:
+    """将 LoRA 分配到组，并设置版本标签"""
+    sql = "UPDATE loras SET group_id = %s"
+    params = [group_id]
+
+    if version_tag is not None:
+        sql += ", version_tag = %s"
+        params.append(version_tag)
+
+    sql += " WHERE id = %s"
+    params.append(lora_id)
+
+    execute(sql, tuple(params))
+    return True
+
 

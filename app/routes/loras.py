@@ -424,3 +424,130 @@ async def get_available_base_models():
     return result
 
 
+# ==================== LoRA 组管理 ====================
+
+@router.get("/groups")
+async def list_lora_groups():
+    """
+    GET /api/loras/groups - 获取所有 LoRA 组
+
+    返回：
+    - groups: 组列表
+      - id: 组 ID
+      - group_name: 组名
+      - display_name: 显示名称
+      - description: 描述
+      - lora_count: 组内 LoRA 数量
+      - default_lora_id: 默认 LoRA ID
+    """
+    groups = lm.list_groups()
+    return {"groups": groups}
+
+
+@router.post("/groups")
+async def create_lora_group(body: dict):
+    """
+    POST /api/loras/groups - 创建 LoRA 组
+
+    请求体：
+    - group_name: 组名（必填）
+    - display_name: 显示名称
+    - description: 描述
+    - default_version_id: 默认版本 ID
+    """
+    try:
+        group_id = lm.create_group(
+            group_name=body.get("group_name"),
+            display_name=body.get("display_name"),
+            description=body.get("description"),
+            default_version_id=body.get("default_version_id")
+        )
+        group = lm.get_group(group_id)
+        return group
+    except Exception as e:
+        if "Duplicate entry" in str(e):
+            raise HTTPException(status_code=409, detail=f"组名 '{body.get('group_name')}' 已存在")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/groups/{group_id}")
+async def get_lora_group(group_id: int):
+    """GET /api/loras/groups/{id} - 获取组详情"""
+    group = lm.get_group(group_id)
+    if not group:
+        raise HTTPException(status_code=404, detail=f"组 {group_id} 不存在")
+    return group
+
+
+@router.put("/groups/{group_id}")
+async def update_lora_group(group_id: int, body: dict):
+    """PUT /api/loras/groups/{id} - 更新组"""
+    group = lm.get_group(group_id)
+    if not group:
+        raise HTTPException(status_code=404, detail=f"组 {group_id} 不存在")
+
+    try:
+        lm.update_group(
+            group_id=group_id,
+            group_name=body.get("group_name"),
+            display_name=body.get("display_name"),
+            description=body.get("description"),
+            default_version_id=body.get("default_version_id")
+        )
+        updated_group = lm.get_group(group_id)
+        return updated_group
+    except Exception as e:
+        if "Duplicate entry" in str(e):
+            raise HTTPException(status_code=409, detail=f"组名 '{body.get('group_name')}' 已存在")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/groups/{group_id}")
+async def delete_lora_group(group_id: int):
+    """
+    DELETE /api/loras/groups/{id} - 删除组
+
+    注意：删除组不会删除组内的 LoRA，只是解除关联
+    """
+    group = lm.get_group(group_id)
+    if not group:
+        raise HTTPException(status_code=404, detail=f"组 {group_id} 不存在")
+
+    lm.delete_group(group_id)
+    return {"message": f"组 {group_id} 已删除"}
+
+
+@router.get("/groups/{group_id}/loras")
+async def get_group_loras(group_id: int):
+    """GET /api/loras/groups/{id}/loras - 获取组内的 LoRA 列表"""
+    group = lm.get_group(group_id)
+    if not group:
+        raise HTTPException(status_code=404, detail=f"组 {group_id} 不存在")
+
+    loras = lm.get_group_loras(group_id)
+    return {"loras": loras}
+
+
+@router.put("/loras/{lora_id}/group")
+async def assign_lora_group(lora_id: int, body: dict):
+    """
+    PUT /api/loras/{id}/group - 将 LoRA 分配到组
+
+    请求体：
+    - group_id: 组 ID（null 表示解除关联）
+    - version_tag: 版本标签（如 "low", "high", "v1", "v2"）
+    """
+    lora = lm.get_lora(lora_id)
+    if not lora:
+        raise HTTPException(status_code=404, detail=f"LoRA {lora_id} 不存在")
+
+    lm.assign_lora_to_group(
+        lora_id=lora_id,
+        group_id=body.get("group_id"),
+        version_tag=body.get("version_tag")
+    )
+    updated_lora = lm.get_lora(lora_id)
+    return updated_lora
+
+
+

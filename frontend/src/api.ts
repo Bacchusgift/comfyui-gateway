@@ -593,6 +593,68 @@ export const loras = {
       diffusion_models: Array<{ filename: string; relative_path: string; file_size: number }>;
     }>("/loras/base-models/available"),
 
+  // ==================== LoRA 组管理 ====================
+
+  listGroups: () =>
+    request<{ groups: Array<{
+      id: number;
+      group_name: string;
+      display_name: string | null;
+      description: string | null;
+      lora_count: number;
+      default_lora_id: number | null;
+      created_at: string;
+    }> }>("/loras/groups"),
+
+  createGroup: (data: {
+    group_name: string;
+    display_name?: string;
+    description?: string;
+    default_version_id?: number;
+  }) => request<{
+    id: number;
+    group_name: string;
+    display_name: string | null;
+    description: string | null;
+    lora_count: number;
+    default_lora_id: number | null;
+  }>("/loras/groups", { method: "POST", body: JSON.stringify(data) }),
+
+  getGroup: (id: number) =>
+    request<{
+      id: number;
+      group_name: string;
+      display_name: string | null;
+      description: string | null;
+      lora_count: number;
+      default_lora_id: number | null;
+    }>(`/loras/groups/${id}`),
+
+  updateGroup: (id: number, data: {
+    group_name?: string;
+    display_name?: string;
+    description?: string;
+    default_version_id?: number;
+  }) => request<{
+    id: number;
+    group_name: string;
+    display_name: string | null;
+    description: string | null;
+    lora_count: number;
+    default_lora_id: number | null;
+  }>(`/loras/groups/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+
+  deleteGroup: (id: number) =>
+    request<{ message: string }>(`/loras/groups/${id}`, { method: "DELETE" }),
+
+  getGroupLoras: (id: number) =>
+    request<{ loras: LoraItem[] }>(`/loras/groups/${id}/loras`),
+
+  assignLoraGroup: (id: number, data: {
+    group_id: number | null;
+    version_tag?: string;
+  }) => request<LoraItem>(`/loras/${id}/group`, { method: "PUT", body: JSON.stringify(data) }),
+
   // 匹配 API（使用 openapi 前缀，不需要认证）
   match: (data: MatchLorasRequest) =>
     request<{
